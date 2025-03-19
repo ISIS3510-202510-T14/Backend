@@ -1,0 +1,47 @@
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de base de datos (por ejemplo, SQLite)
+db.sqlite3
+
+# Archivos de configuración local
+local_settings.py
+
+# Archivos de logs
+*.log
+
+# Entornos virtuales
+.env
+.venv
+env/
+venv/
+
+# Directorios de paquetes instalados
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Archivos de caché de test, cobertura, etc.
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Archivos de Django collectstatic (si se generan en producción)
+staticfiles/
+
+# Archivos de configuración de IDEs/editores
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
