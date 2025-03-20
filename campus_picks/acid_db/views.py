@@ -29,7 +29,21 @@ def read_record(entityName: str, recordId: str) -> dict:
     if not Model:
         raise ValueError(f"Unknown entity: {entityName}")
     obj = Model.objects.get(pk=recordId)
-    return model_to_dict(obj)
+    fields = [field.name for field in obj._meta.fields]
+    data = model_to_dict(obj, fields=fields)
+    
+    if hasattr(obj, "created_at"):
+        data["created_at"] = obj.created_at.isoformat()
+    if hasattr(obj, "updated_at"):
+        data["updated_at"] = obj.updated_at.isoformat()
+    
+    obj_pk_field = obj._meta.pk.name
+    
+
+    data[obj_pk_field ] = str(getattr(obj, obj_pk_field))
+
+    
+    return data
 
 def update_record(entityName: str, recordId: str, payload: dict) -> None:
     """
@@ -73,27 +87,26 @@ def run_transactional_operation(operations: list) -> None:
             else:
                 raise ValueError(f"Unknown operation type: {op_type}")
 
+from django.forms.models import model_to_dict
+
 def query_records(entityName: str, queryParams: dict) -> list:
     """
     Retrieves multiple records based on provided query parameters.
-    queryParams should be a dictionary with optional keys:
-      - filters: a list of dicts { "field": "string", "operator": "=", "value": any }
-      - sort: a dict { "field": "string", "direction": "ASC" or "DESC" }
-      - limit: an integer to limit the number of records returned.
-    Returns a list of dictionaries representing each record.
+    Returns a list of dictionaries representing each record, ensuring the primary key is included.
     """
     Model = ENTITY_MODEL_MAP.get(entityName)
     if not Model:
         raise ValueError(f"Unknown entity: {entityName}")
+    
     qs = Model.objects.all()
     # Apply filters
     for filter_item in queryParams.get('filters', []):
         field = filter_item.get('field')
         operator = filter_item.get('operator')
         value = filter_item.get('value')
-        # Here we handle only the '=' operator; extend as needed.
         if operator == '=':
             qs = qs.filter(**{field: value})
+    
     # Apply sorting if provided
     sort = queryParams.get('sort')
     if sort:
@@ -102,9 +115,21 @@ def query_records(entityName: str, queryParams: dict) -> list:
         if direction.upper() == 'DESC':
             field = '-' + field
         qs = qs.order_by(field)
+    
     # Apply limit if provided
     limit = queryParams.get('limit')
     if limit:
         qs = qs[:limit]
-    # Return list of dicts
-    return [model_to_dict(obj) for obj in qs]
+    
+    results = []
+    for obj in qs:
+        # Convert model to dict
+        data = model_to_dict(obj)
+        # Ensure the primary key is included as a string
+        pk_field = obj._meta.pk.name
+        pk_field_key = pk_field.replace('_id', 'Id')
+
+        data[pk_field_key] = str(getattr(obj, pk_field))
+        results.append(data)
+    
+    return results
