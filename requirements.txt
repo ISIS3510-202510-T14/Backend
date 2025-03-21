@@ -2,3 +2,5 @@ Django>=4.2,<5.0
 djangorestframework>=3.14
 mongoengine>=0.25
 pymongo>=3.11
+channels>=4.2.0
+channels-redis>=4.2.1
