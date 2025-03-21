@@ -14,84 +14,107 @@ def haversine(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-def process_location_update(user_id, location_data, timestamp_str):
+import datetime
+import json
+import logging
+import random
+import uuid
+import http.client
+from dateutil.parser import parse as parse_date
+
+
+
+logger = logging.getLogger(__name__)
+
+def record_proximity_incident(user_id: str, event_id: str) -> None:
+    """
+    Records a proximity incident for a user and event,
+    only if no existing incident of type "proximity" exists for that combination.
+    """
+    # Read all incidents from the "incidents" collection
+    incidents = read_data("incidents")
+    print(incidents)
+    if incidents:
+        for inc in incidents:
+            # Assuming inc is a dict; adjust if using a MongoEngine document
+            if inc.incidentType == "proximity" and inc.userId == user_id and inc.eventId == event_id:
+                # Incident already exists, so exit
+                return
+    # If no duplicate found, create the incident
+    incident_data = {
+        "incidentType": "proximity",
+        "userId": user_id,
+        "eventId": event_id,
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+    write_data("incidents", incident_data)
+
+def record_attendance_incident(user_id: str, event_id: str) -> None:
+    """
+    Records an attendance incident for a user and event,
+    only if no existing incident of type "attendance" exists for that combination.
+    """
+    incidents = read_data("incidents")
+    if incidents:
+        for inc in incidents:
+            if inc.incidentType == "attendance" and inc.userId == user_id and inc.eventId == event_id:
+                return
+    incident_data = {
+        "incidentType": "attendance",
+        "userId": user_id,
+        "eventId": event_id,
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }
+    write_data("incidents", incident_data)
+
+def process_location_update(user_id: str, location_data: dict, timestamp_str: str) -> None:
     """
     Processes a location update:
+    - Converts the provided timestamp.
     - Reads events from the real-time database (Mongo).
-    - Filters events that have already started and haven't ended.
-    - Calculates the distance between the user's location and each ongoing event.
-    - If the user is within 1 km, records a proximity incident.
-    - If the user is within 0.1 km, records an attendance incident.
-    - Sends a notification with the information.
+    - Filters events with status "upcoming" or "live".
+    - Calculates the distance between the user's location and each event.
+    - If within 1 km, records a proximity incident.
+    - If the event is live and within 0.1 km, records an attendance incident.
     """
     # Convert the ISO8601 timestamp string to a datetime object
     user_timestamp = datetime.datetime.fromisoformat(timestamp_str)
     
-    # User location
+    # Get user's coordinates
     user_lat = location_data.get('lat')
     user_lng = location_data.get('lng')
     
-    # Retrieve events from the real-time database (Mongo)
-    # Each event is expected to have:
-    #   - location: a dict with 'lat' and 'lng'
-    #   - acidEventId: a unique identifier
-    #   - startTime: event start time (ISO8601 string or datetime)
-    #   - endTime: event end time (ISO8601 string or datetime)
-    events = read_data('events')  # You can add filters if needed
+    # Retrieve events from the real-time DB (Mongo)
+    events = read_data('events')
     
-    # Iterate through events to calculate the distance only if the event is currently ongoing
     for event in events:
-        # Ensure event times are datetime objects; if stored as strings, convert them.
+        # Process only events with status "upcoming" or "live"
+        event_status = getattr(event, "status", "").lower() if hasattr(event, "status") else ""
+        if event_status not in ("upcoming", "live"):
+            continue
+        
+        # Ensure event startTime is a datetime object
         if isinstance(event.startTime, str):
             event_start = datetime.datetime.fromisoformat(event.startTime)
         else:
             event_start = event.startTime
-
-        if isinstance(event.endTime, str):
-            event_end = datetime.datetime.fromisoformat(event.endTime)
-        else:
-            event_end = event.endTime
-
-        # Check if the event is currently in progress
-        if event_start <= user_timestamp < event_end:
-            event_location = event.location  # Expecting a dict with 'lat' and 'lng'
-            event_lat = event_location.get('lat')
-            event_lng = event_location.get('lng')
-            distance = haversine(user_lat, user_lng, event_lat, event_lng)
+        
+        # Calculate the distance between user and event location
+        event_location = event.location  # Expecting a dict with 'lat' and 'lng'
+        event_lat = event_location.get('lat')
+        event_lng = event_location.get('lng')
+        distance = haversine(user_lat, user_lng, event_lat, event_lng)
+        
+        if distance <= 1:  # Proximity threshold: 1 km
+            record_proximity_incident(user_id, event.acidEventId)
             
-            if distance <= 1:  # Proximity threshold: 1 km
-                record_proximity_incident(user_id, event.acidEventId)
-                
-                if distance <= 0.1:  # Attendance threshold: 0.1 km
-                    record_attendance_incident(user_id, event.acidEventId)
-                
-                # # Send notification with the calculated distance
-                # send_notification(user_id, {
-                #     "title": "Proximity Alert",
-                #     "body": f"You are {distance:.2f} km away from an event.",
-                #     "eventId": event.acidEventId
-                # })
-
-def record_proximity_incident(user_id, event_id):
-    """
-    Records a proximity incident in the real-time database (e.g., under 'incidents').
-    """
-    incident = {
-        "userId": user_id,
-        "eventId": event_id,
-        "timestamp": datetime.datetime.utcnow().isoformat()
-    }
-    write_data('incidents', incident)
-    print(f"Proximity incident recorded for user {user_id} at event {event_id}")
-
-def record_attendance_incident(user_id, event_id):
-    """
-    Records an attendance incident in the real-time database.
-    """
-    incident = {
-        "userId": user_id,
-        "eventId": event_id,
-        "timestamp": datetime.datetime.utcnow().isoformat()
-    }
-    write_data('incidents', incident)
-    print(f"Attendance incident recorded for user {user_id} at event {event_id}")
+            # Record attendance only if the event is live and within 0.1 km
+            if event_status == "live" and distance <= 0.1:
+                record_attendance_incident(user_id, event.acidEventId)
+            
+            # Optionally, send a notification with the calculated distance
+            # send_notification(user_id, {
+            #     "title": "Proximity Alert",
+            #     "body": f"You are {distance:.2f} km away from an event.",
+            #     "eventId": event.acidEventId
+            # })
