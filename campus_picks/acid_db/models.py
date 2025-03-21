@@ -21,7 +21,7 @@ class Event(models.Model):
 
 
     def __str__(self):
-        return self.name
+        return self.event_id
 
 class Bet(models.Model):
     bet_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
