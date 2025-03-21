@@ -15,10 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
+from realtime_processor import consumers
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api_gateway.urls'))
+]
+
+websocket_urlpatterns = [
+    re_path(r'ws/events/(?P<user_id>\w+)/$', consumers.EventConsumer.as_asgi()),
 ]
 

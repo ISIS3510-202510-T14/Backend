@@ -11,6 +11,13 @@ import os
 
 from django.core.asgi import get_asgi_application
 
+from channels.routing import ProtocolTypeRouter, URLRouter
+import campus_picks.urls
+
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'campus_picks.settings')
 
-application = get_asgi_application()
+application = ProtocolTypeRouter({
+    'http': get_asgi_application(),
+    'websocket': URLRouter(campus_picks.urls.websocket_urlpatterns),
+})
