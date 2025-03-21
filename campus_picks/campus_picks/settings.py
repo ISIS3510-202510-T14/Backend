@@ -40,6 +40,11 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'api_gateway',
+    'sports_data_integration',
+    "realtime",
+    "django_crontab",
+    "acid_db",
+    "user_management",
 ]
 
 MIDDLEWARE = [
@@ -133,3 +138,8 @@ mongoengine.connect(
     host='localhost',
     port=27017,
 )
+
+
+CRONJOBS = [
+    ('*/1 * * * *', 'sports_data_integration.views.poll_events_task'), # Ejecuta cada minuto
+]
