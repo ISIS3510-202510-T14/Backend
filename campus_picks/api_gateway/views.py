@@ -2,13 +2,24 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from location_processor.views import process_location_update
-from bet_management.views import placeBet, getBetHistory, getBetDetails, listEvents, listRecommendedBets
-# api/views.py
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from location_processor.views import process_location_update
-from user_management.views import createUser, getUser, updateUser, deleteUser
+from rest_framework import status
+from bet_management.views import (
+    placeBet,
+    getBetHistory,
+    getBetDetails,
+    listEvents,
+    listRecommendedBets
+)
+from user_management.views import (
+    createUser,
+    getUser,
+    updateUser,
+    deleteUser
+)
+
+# (Any other imports you need can remain here)
+
 
 #from modules.auth_service import verify_token
 
@@ -205,7 +216,7 @@ def create_bet(request):
 @api_view(['GET'])
 def list_bets(request):
     """
-    GET /bets
+    GET /bets/history
     Expects a query parameter: userId
     Response example:
     {
@@ -316,3 +327,27 @@ def get_recommended_events(request):
         filterParams['sport'] = request.query_params['sport']
     recommendations = listRecommendedBets(user_id, filterParams)
     return Response({"recommendedBets": recommendations}, status=status.HTTP_200_OK)
+
+# Import the poll_events function from sports_data_integration
+# (Adjust if you want to import trigger_polling or something else.)
+from sports_data_integration.views import poll_events
+
+@api_view(['POST'])
+def trigger_sports_polling(request):
+    """
+    POST /polling
+    Triggers the poll_events function from the sports_data_integration module.
+    Optional JSON payload:
+    {
+      "provider": "api-sports"
+    }
+    """
+    # Obtain the provider from the request body if present
+    provider_id = request.data.get('provider', 'api-sports')
+    try:
+        poll_events(provider_id)
+        return Response({"message": f"Polling triggered for provider: {provider_id}"},
+                        status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
