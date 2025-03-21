@@ -173,6 +173,3 @@ def getEventDetails(eventId: str) -> dict:
     Retrieves event details from the ACID DB.
     """
     return read_record("event", eventId)
-
-
-

@@ -24,12 +24,12 @@ class EventRT(Document):
     }
 
 class RecommendedBet(Document):
-    userId = StringField(required=True)  # Identificador del usuario (Firebase Auth uid)
-    recommendationId = StringField(required=True)  # ID única para la recomendación (única por usuario)
-    eventId = StringField(required=True)  # Referencia al eventId en /events
-    betType = StringField(required=True)  # Ej: 'win', 'over/under', etc.
-    description = StringField()            # Breve descripción o razón
-    createdAt = DateTimeField(default=datetime.datetime.utcnow)
+    recommendationId = StringField(primary_key=True)  # or _id?
+    userId = StringField(required=True)
+    eventId = StringField(required=True)
+    betType = StringField()
+    description = StringField()
+    createdAt = DateTimeField()
 
     meta = {
         'collection': 'recommendedBets'

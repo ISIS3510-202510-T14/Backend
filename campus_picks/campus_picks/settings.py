@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     "django_crontab",
     "acid_db",
     "user_management",
+    "analytics_engine",
+    "django_apscheduler"
 ]
 
 MIDDLEWARE = [
@@ -116,7 +118,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Bogota'
 
 USE_I18N = True
 
