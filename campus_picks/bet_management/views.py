@@ -2,6 +2,9 @@
 import datetime
 import logging
 from dateutil.parser import parse as parse_date
+from bson import ObjectId
+
+
 
 from acid_db.views import (
     create_record, 
@@ -19,11 +22,19 @@ def listEvents(filterParams: dict) -> list:
     Reads detailed event data from the Real-Time DB (Mongo).
     """
     # Here we simply retrieve all events; you can add filtering logic if needed.
-    events = read_data("events", [])
+    events = read_data("events")
     filtered = []
     for event in events:
+
+
         # Convert document to dict if necessary (depends on your Mongo driver usage)
-        event_data = event.to_mongo().to_dict() if hasattr(event, "to_mongo") else event
+
+        event_data = event.to_mongo().to_dict()
+        event_data["eventId"] = str(event_data.pop("_id", None))
+
+
+
+
         # Apply simple filtering
         if "sport" in filterParams and event_data.get("sport") != filterParams["sport"]:
             continue
@@ -77,10 +88,33 @@ def getBetHistory(userId: str) -> list:
 
 def getBetDetails(betId: str) -> dict:
     """
-    Retrieves detailed information for a single bet from the ACID DB.
+    Retrieves detailed information for a single bet from the ACID DB and
+    returns it formatted as:
+    {
+      "bet": {
+        "betId": "bet555",
+        "userId": "userABC",
+        "eventId": "sql-evt001",
+        "stake": 50.0,
+        "odds": 1.85,
+        "status": "placed",
+        "created_at": "2025-03-19T19:05:00Z",
+        "updated_at": "2025-03-19T19:05:00Z"
+      }
+    }
     """
     bet = read_record("bet", betId)
-    return {"bet": bet}
+    formatted_bet = {
+        "betId": bet.get("bet_id", betId),
+        "userId": str(bet.get("user")),
+        "eventId": str(bet.get("event")),
+        "stake": bet.get("stake"),
+        "odds": bet.get("odds"),
+        "status": bet.get("status"),
+        "created_at": bet.get("created_at"),
+        "updated_at": bet.get("updated_at")
+    }
+    return {"bet": formatted_bet}
 
 def createOrUpdateEvent(eventInfo: dict) -> str:
     """

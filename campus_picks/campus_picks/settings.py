@@ -40,6 +40,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'api_gateway',
+    'sports_data_integration',
+    "realtime",
+    "acid_db",
+    "user_management",
 ]
 
 MIDDLEWARE = [
@@ -133,3 +137,4 @@ mongoengine.connect(
     host='localhost',
     port=27017,
 )
+

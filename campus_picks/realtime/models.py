@@ -3,13 +3,21 @@ import datetime
 from mongoengine import Document, StringField, DateTimeField, DictField, FloatField
 
 class EventRT(Document):
+    
     acidEventId = StringField(required=True)  # Referencia al event.event_id en la base ACID
     name = StringField(required=True)
     sport = StringField()  # Ej: 'soccer', 'basketball'
     location = DictField()  # Ej: {"lat": 40.7128, "lng": -74.0060}
     startTime = DateTimeField()  # Fecha y hora de inicio del evento
+    endTime = DateTimeField()    # Fecha y hora de finalización del evento
     status = StringField()       # Ej: 'upcoming', 'live', 'ended'
     providerId = StringField()   # Debe coincidir con event.provider_id
+
+
+    # New fields for the team names
+    homeTeam = StringField()     # Name of the home team
+    awayTeam = StringField()     # Name of the away team
+    endTime = DateTimeField()    # End date and time
 
     meta = {
         'collection': 'events'
