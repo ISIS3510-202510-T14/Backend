@@ -39,6 +39,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'api_gateway',
+    'sports_data_integration',
+    "realtime",
+    "django_crontab",
+    "acid_db",
+    "user_management",
+    "analytics_engine",
+    "django_apscheduler"
 ]
 
 MIDDLEWARE = [
@@ -110,7 +118,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Bogota'
 
 USE_I18N = True
 
@@ -126,3 +134,14 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+mongoengine.connect(
+    db='your_db_name',
+    host='localhost',
+    port=27017,
+)
+
+
+CRONJOBS = [
+    ('*/1 * * * *', 'sports_data_integration.views.poll_events_task'), # Ejecuta cada minuto
+]
