@@ -1,6 +1,9 @@
 # api/urls.py
 from django.urls import path
 from .views import location_update_view, get_events, get_recommended_events, create_bet, list_bets, bet_detail,create_user_endpoint,get_user_endpoint,update_user_endpoint,delete_user_endpoint, trigger_sports_polling
+from django.urls import re_path
+from . import consumers
+from .consumers import EventsConsumer
 
 urlpatterns = [
     path('location', location_update_view, name='location_update'),
@@ -14,4 +17,8 @@ urlpatterns = [
     path('usersU/<str:userId>', update_user_endpoint, name="update_user"), # PUT /users/{userId}
     path('usersD/<str:userId>', delete_user_endpoint, name="delete_user"), # DELETE /users/{userId}
     path('polling', trigger_sports_polling, name='trigger_sports_polling'),
+]
+
+websocket_urlpatterns = [
+    re_path(r'ws/events/$', consumers.EventsConsumer.as_asgi()),
 ]

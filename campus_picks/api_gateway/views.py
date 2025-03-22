@@ -1,4 +1,5 @@
 # api/views.py
+import json
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from location_processor.views import process_location_update
@@ -17,6 +18,8 @@ from user_management.views import (
     updateUser,
     deleteUser
 )
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 # (Any other imports you need can remain here)
 
@@ -351,3 +354,10 @@ def trigger_sports_polling(request):
     except Exception as e:
         return Response({"error": str(e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+def broadcast_new_event(event_data: dict):
+    channel_layer = get_channel_layer()
+    async_to_sync(channel_layer.group_send)(
+        "events",
+        {"type": "new_event", "event": json.dumps(event_data)}
+    )

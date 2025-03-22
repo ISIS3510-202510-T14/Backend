@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'daphne',
     'django.contrib.staticfiles',
     'api_gateway',
     'sports_data_integration',
@@ -46,7 +47,8 @@ INSTALLED_APPS = [
     "acid_db",
     "user_management",
     "analytics_engine",
-    "django_apscheduler"
+    "django_apscheduler",
+    'real_time_event_processor.apps.RealTimeEventProcessorConfig'
 ]
 
 MIDDLEWARE = [
@@ -139,9 +141,24 @@ mongoengine.connect(
     db='your_db_name',
     host='localhost',
     port=27017,
+    replicaSet='rs0'
 )
 
 
 CRONJOBS = [
     ('*/1 * * * *', 'sports_data_integration.views.poll_events_task'), # Ejecuta cada minuto
 ]
+
+# settings.py (Channels configuration)
+ASGI_APPLICATION = "campus_picks.asgi.application"  # your project’s ASGI app
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",  # use Redis for channel layer
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],  # Redis server address
+        },
+    },
+}
+
+MONGODB_URI = "mongodb://localhost:27017/?replicaSet=rs0"
+MONGODB_NAME = "your_db_name"
