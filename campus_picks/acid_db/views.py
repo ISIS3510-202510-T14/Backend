@@ -1,5 +1,5 @@
 # acid_db/api.py
-from acid_db.models import User, Event, Bet
+from acid_db.models import User, Event, Bet, Team
 from django.forms.models import model_to_dict
 from django.db import transaction
 
@@ -8,6 +8,7 @@ ENTITY_MODEL_MAP = {
     'user': User,
     'event': Event,
     'bet': Bet,
+    "team": Team,
 }
 
 def create_record(entityName: str, payload: dict) -> str:

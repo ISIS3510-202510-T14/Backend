@@ -8,7 +8,7 @@ urlpatterns = [
     path('events/recommended', get_recommended_events, name="get_recommended_events"),
     path('bets', create_bet, name='create_bet'),        # POST /bets
     path('bets/history', list_bets, name='list_bets'),            # GET /bets/history?userId=...
-    path('bets/<str:bet_id>', bet_detail, name='bet_detail'),  # GET /bets/{betId}
+    path('betsA/<str:bet_id>', bet_detail, name='bet_detail'),  # GET /bets/{betId}
     path('users', create_user_endpoint, name="create_user"),          # POST /users,
     path('users/<str:userId>', get_user_endpoint, name="get_user"),       # GET /users/{userId}
     path('usersU/<str:userId>', update_user_endpoint, name="update_user"), # PUT /users/{userId}
