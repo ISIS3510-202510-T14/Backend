@@ -12,8 +12,6 @@ class EventRT(Document):
     endTime = DateTimeField()    # Fecha y hora de finalización del evento
     status = StringField()       # Ej: 'upcoming', 'live', 'ended'
     providerId = StringField()   # Debe coincidir con event.provider_id
-
-
     # New fields for the team names
     homeTeam = StringField()     # Name of the home team
     awayTeam = StringField()     # Name of the away team

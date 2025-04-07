@@ -5,7 +5,7 @@ from .views import location_update_view, get_events, get_recommended_events, cre
 urlpatterns = [
     path('location', location_update_view, name='location_update'),
     path('events', get_events, name="get_events"),
-    path('events/recommended', get_recommended_events, name="get_recommended_events"),
+    path('events/recommended/', get_recommended_events, name="get_recommended_events"),
     path('bets', create_bet, name='create_bet'),        # POST /bets
     path('bets/history', list_bets, name='list_bets'),            # GET /bets/history?userId=...
     path('betsA/<str:bet_id>', bet_detail, name='bet_detail'),  # GET /bets/{betId}
@@ -15,3 +15,4 @@ urlpatterns = [
     path('usersD/<str:userId>', delete_user_endpoint, name="delete_user"), # DELETE /users/{userId}
     path('polling', trigger_sports_polling, name='trigger_sports_polling'),
 ]
+

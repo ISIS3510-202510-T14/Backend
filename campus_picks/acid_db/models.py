@@ -4,7 +4,7 @@ from django.db import models
 
 class Team(models.Model):
     team_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, db_index=True)
     logo = models.CharField(max_length=255, blank=True, null=True)  # URL o path al logo
 
     def __str__(self):
@@ -31,9 +31,6 @@ class Event(models.Model):
     away_team = models.ManyToManyField(Team, related_name='away_events')
     home_score = models.IntegerField(null=True, blank=True)
     away_score = models.IntegerField(null=True, blank=True)
-
-    
-
 
     def __str__(self):
         return self.event_id

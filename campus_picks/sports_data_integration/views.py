@@ -251,7 +251,7 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
             
             # Build the standardized event dictionary
             event_data = {
-                "acidEventId": str(acid_event_id),  # Store as string
+                "acidEventId": acid_event_id.hex,  # Store as string
                 "name": event_name,
                 "sport": sport,
                 "location": event_location,

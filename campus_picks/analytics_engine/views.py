@@ -1,5 +1,6 @@
 # analytics_engine.py
 import datetime
+from mongoengine.queryset.visitor import Q
 import logging
 import random
 from acid_db.views import query_records  # For reading bets from PostgreSQL
@@ -9,7 +10,9 @@ from django.shortcuts import render
 from pymongo import MongoClient
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from realtime.models import Metric
+from realtime.models import Metric, EventRT, RecommendedBet
+from acid_db.models import Team, Bet
+
 
 
 
@@ -29,64 +32,216 @@ def runDailyAnalytics():
       5. Calculates metrics (conversion rate, total attendance, etc.).
       6. Stores metrics in the 'analytics' collection.
     """
-    print("Starting daily analytics ...")
+    # print("Starting daily analytics ...")
 
-    # (A) Ingest all events from 'events' collection in Mongo:
-    all_events = read_data("events")  # returns a list of EventRT documents (or dicts)
-    if not all_events:
-        all_events = []
-    print(f"Found {len(all_events)} events in MongoDB.")
+    # # (A) Ingest all events from 'events' collection in Mongo:
+    # all_events = read_data("events")  # returns a list of EventRT documents (or dicts)
+    # if not all_events:
+    #     all_events = []
+    # print(f"Found {len(all_events)} events in MongoDB.")
 
-    # (B) Ingest bets (ACID DB):
-    bet_query = {"filters": []}
-    bets = query_records("bet", bet_query)
-    print(f"Found {len(bets)} bets in the SQL DB.")
+    # # (B) Ingest bets (ACID DB):
+    # bet_query = {"filters": []}
+    # bets = query_records("bet", bet_query)
+    # print(f"Found {len(bets)} bets in the SQL DB.")
     
-    # (C) Generate user recommendations referencing random events:
-    recommendations_by_user = {}
+    # # (C) Generate user recommendations referencing random events:
+    # recommendations_by_user = {}
     
-    for bet in bets:
-        # Example bet dict:
-        # {
-        #   'user': UUID('...'),
-        #   'event': UUID('...'),
-        #   'stake': Decimal('50.00'),
-        #   'odds': Decimal('1.85'),
-        #   'status': 'placed',
-        #   'betId': '...'
-        # }
-        user_id_str = str(bet["user"])  # Convert UUID to string
-        if user_id_str not in recommendations_by_user:
-            recommendations_by_user[user_id_str] = []
+    # for bet in bets:
+    #     # Example bet dict:
+    #     # {
+    #     #   'user': UUID('...'),
+    #     #   'event': UUID('...'),
+    #     #   'stake': Decimal('50.00'),
+    #     #   'odds': Decimal('1.85'),
+    #     #   'status': 'placed',
+    #     #   'betId': '...'
+    #     # }
+    #     user_id_str = str(bet["user"])  # Convert UUID to string
+    #     if user_id_str not in recommendations_by_user:
+    #         recommendations_by_user[user_id_str] = []
         
-        # We'll generate 1 or 2 recommended bets for each user's bet:
-        num_recs = random.randint(1, 2)
-        for _ in range(num_recs):
-            if not all_events:
-                continue
+    #     # We'll generate 1 or 2 recommended bets for each user's bet:
+    #     num_recs = random.randint(1, 2)
+    #     for _ in range(num_recs):
+    #         if not all_events:
+    #             continue
             
-            # Pick a random event from the existing events collection.
-            # We'll store the MongoDB _id (converted to string) to be safe.
-            random_event_doc = random.choice(all_events)
-            event_id_str = str(random_event_doc.id)
+    #         # Pick a random event from the existing events collection.
+    #         # We'll store the MongoDB _id (converted to string) to be safe.
+    #         random_event_doc = random.choice(all_events)
+    #         event_id_str = str(random_event_doc.id)
             
-            recommendation_id = f"reco-{random.randint(100000, 999999)}"
-            recommendation = {
-                "recommendationId": recommendation_id,
-                "userId": user_id_str,
-                "eventId": event_id_str,    # referencing an existing event in Mongo
-                "betType": random.choice(["WIN", "OVER_UNDER"]),
-                "description": "A recommended event chosen from the existing events",
-                "createdAt": datetime.datetime.utcnow().isoformat()
-            }
-            recommendations_by_user[user_id_str].append(recommendation)
+    #         recommendation_id = f"reco-{random.randint(100000, 999999)}"
+    #         recommendation = {
+    #             "recommendationId": recommendation_id,
+    #             "userId": user_id_str,
+    #             "eventId": event_id_str,    # referencing an existing event in Mongo
+    #             "betType": random.choice(["WIN", "OVER_UNDER"]),
+    #             "description": "A recommended event chosen from the existing events",
+    #             "createdAt": datetime.datetime.utcnow().isoformat()
+    #         }
+    #         recommendations_by_user[user_id_str].append(recommendation)
 
-    print(f"Built recommendations for {len(recommendations_by_user)} distinct user(s).")
+    # print(f"Built recommendations for {len(recommendations_by_user)} distinct user(s).")
     
-    # (D) Store recommendations in Mongo (one doc per recommendation):
+    # # (D) Store recommendations in Mongo (one doc per recommendation):
+    # for user_id, recs in recommendations_by_user.items():
+    #     storeRecommendations(user_id, recs)
+    
+
+        # Agrupar apuestas por usuario y por equipo, obteniendo también el nombre del equipo.
+
+    user_team_bets = {}
+    
+    bets = Bet.objects.all()  # Puedes aplicar filtros si es necesario
+
+    betted_teams = {}
+
+    for bet in bets:
+        user_id = str(bet.user.pk)
+        team_id = str(bet.team.pk)
+        team_name = bet.team.name
+        if user_id not in user_team_bets:
+            user_team_bets[user_id] = {}
+        if team_id not in user_team_bets[user_id]:
+            user_team_bets[user_id][team_id] = {"count": 0, "team_name": team_name}
+        if team_id not in betted_teams:
+            betted_teams[team_id] = team_name
+        user_team_bets[user_id][team_id]["count"] += 1
+        
+
+    THRESHOLD = 2  # Umbral para considerar apuestas recurrentes en el mismo equipo
+    recommendations_by_user = {}
+
+    team_recommendation_data = {}
+
+    for team_id, team_name in betted_teams.items():
+        # Buscar todos los eventos próximos o en vivo para ese equipo
+        upcoming_events = list(EventRT.objects.filter(
+            (Q(homeTeam=team_name) | Q(awayTeam=team_name)) & 
+            Q(status__in=["upcoming", "live"])
+        ).order_by("startTime"))
+
+        #print (f"Upcoming events for {team_name}: {upcoming_events}")
+        
+        # # Calcular rendimiento en los últimos 2 semanas para ese equipo.
+        # two_weeks_ago = datetime.datetime.utcnow() - datetime.timedelta(weeks=2)
+        # recent_events = EventRT.objects.filter(
+        #     (Q(homeTeam=team_name) | Q(awayTeam=team_name)) &
+        #     Q(status="ended") &
+        #     Q(endTime__gte=two_weeks_ago)
+        # )
+        # print(f"Recent events for {team_name}: {recent_events}")
+
+        recent_events = EventRT.objects.filter(
+            (Q(homeTeam=team_name) | Q(awayTeam=team_name)) &
+            Q(status="ended")
+            )
+
+        wins = 0
+        losses = 0
+        for event in recent_events:
+            if event.home_score is not None and event.away_score is not None:
+                if event.homeTeam == team_name:
+                    if event.home_score > event.away_score:
+                        wins += 1
+                    elif event.home_score < event.away_score:
+                        losses += 1
+                elif event.awayTeam == team_name:
+                    if event.away_score > event.home_score:
+                        wins += 1
+                    elif event.away_score < event.home_score:
+                        losses += 1
+        performance = {"wins": wins, "losses": losses}
+        team_recommendation_data[team_id] = {
+            "team_name": team_name,
+            "upcoming_events": upcoming_events,
+            "performance": performance
+        }        
+
+
+
+
+
+    # Paso 2: Generar recomendaciones por usuario usando la información calculada
+    recommendations_by_user = {}
+
+    for user_id, teams in user_team_bets.items():
+        for team_id, info in teams.items():
+            if info["count"] >= THRESHOLD and team_id in team_recommendation_data:
+                data = team_recommendation_data[team_id]
+                team_name = data["team_name"]
+                upcoming_events = data["upcoming_events"]
+                wins = data["performance"]["wins"]
+                losses = data["performance"]["losses"]
+                
+                # Definir el mensaje base según el rendimiento reciente del equipo
+                if losses > wins:
+                    bet_type = "caution"
+                    base_message = (f"We know you love {team_name}, but based on its recent performance "
+                                    f"(Wins: {wins}, Losses: {losses}), you might consider refraining from betting.")
+                else:
+                    bet_type = "win"
+                    base_message = (f"{team_name} has been performing well recently "
+                                    f"(Wins: {wins}, Losses: {losses}). Consider betting on their victory.")
+                
+                # Generar una recomendación para cada evento próximo encontrado
+                for event in upcoming_events:
+                    recommendation_id = f"reco-{random.randint(100000, 999999)}"
+                    description = f"{base_message} Upcoming match: {event.homeTeam} vs {event.awayTeam} starts at {event.startTime}."
+
+                    recommendation = {
+                        "recommendationId": recommendation_id,
+                        "userId": user_id,
+                        "eventId": str(event.id),  # O event.acidEventId si prefieres
+                        "betType": bet_type,
+                        "description": description,
+                        "createdAt": datetime.datetime.utcnow().isoformat()
+                    }
+                    if user_id not in recommendations_by_user:
+                        recommendations_by_user[user_id] = []
+                    recommendations_by_user[user_id].append(recommendation)
+
+
     for user_id, recs in recommendations_by_user.items():
-        storeRecommendations(user_id, recs)
+        for rec in recs:
+            # Convertir la cadena ISO a objeto datetime (ajustando la "Z" si existe)
+            created_at_iso = rec.get("createdAt")
+            created_at_dt = datetime.datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
+            recommended_bet = RecommendedBet(
+                recommendationId=rec["recommendationId"],
+                userId=rec["userId"],
+                eventId=rec["eventId"],
+                betType=rec["betType"],
+                description=rec["description"],
+                createdAt=created_at_dt
+            )
+            recommended_bet.save()
     
+
+    print(f"Built personalized recommendations for {len(recommendations_by_user)} distinct user(s).")
+
+    # # Almacenar las recomendaciones en la colección 'recommendedBets'
+    # for user_id, recs in recommendations_by_user.items():
+    #     storeRecommendations(user_id, recs)
+
+    for user_id, recs in recommendations_by_user.items():
+        for rec in recs:
+            # Convertir la cadena ISO a objeto datetime (ajustando la "Z" si existe)
+            created_at_iso = rec.get("createdAt")
+            created_at_dt = datetime.datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
+            recommended_bet = RecommendedBet(
+                recommendationId=rec["recommendationId"],
+                userId=rec["userId"],
+                eventId=rec["eventId"],
+                betType=rec["betType"],
+                description=rec["description"],
+                createdAt=created_at_dt
+            )
+            recommended_bet.save()
+
         # -----------------------------------------
     # 4) Ingest Incidents (Real-Time DB)
     # -----------------------------------------

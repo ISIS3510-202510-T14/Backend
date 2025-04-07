@@ -3,6 +3,8 @@ import datetime
 import logging
 from dateutil.parser import parse as parse_date
 from bson import ObjectId
+from acid_db.models import Team, Bet
+from realtime.models import RecommendedBet
 
 
 
@@ -25,16 +27,9 @@ def listEvents(filterParams: dict) -> list:
     events = read_data("events")
     filtered = []
     for event in events:
-
-
         # Convert document to dict if necessary (depends on your Mongo driver usage)
-
         event_data = event.to_mongo().to_dict()
         event_data["eventId"] = str(event_data.pop("_id", None))
-
-
-
-
         # Apply simple filtering
         if "sport" in filterParams and event_data.get("sport") != filterParams["sport"]:
             continue
@@ -45,16 +40,37 @@ def listEvents(filterParams: dict) -> list:
         filtered.append(event_data)
     return filtered
 
+# def listRecommendedBets(userId: str, filterParams: dict) -> list:
+#     """
+#     Retrieves recommended bets for the given user from the Real-Time DB.
+#     """
+#     path = f"recommendedBets/{userId}"
+#     recommendations = read_data(path)
+#     # Here you can apply additional filtering based on filterParams if needed.
+#     if recommendations and isinstance(recommendations, list):
+#         return [rec.to_mongo().to_dict() if hasattr(rec, "to_mongo") else rec for rec in recommendations]
+#     return []
+
 def listRecommendedBets(userId: str, filterParams: dict) -> list:
     """
-    Retrieves recommended bets for the given user from the Real-Time DB.
+    Retrieves recommended bets for the given user using the MongoEngine ORM.
     """
-    path = f"recommendedBets/{userId}"
-    recommendations = read_data(path)
-    # Here you can apply additional filtering based on filterParams if needed.
-    if recommendations and isinstance(recommendations, list):
-        return [rec.to_mongo().to_dict() if hasattr(rec, "to_mongo") else rec for rec in recommendations]
-    return []
+    userId = userId.strip() 
+    
+    print(userId)
+    # Consulta básica por userId
+    qs = RecommendedBet.objects(userId=userId)
+
+    print (f"qs: {qs}")
+    
+    # Aplicar filtros adicionales si se especifican
+    # Ejemplo: filtrar por betType si se incluye en filterParams
+    if 'betType' in filterParams:
+        qs = qs.filter(betType=filterParams['betType'])
+    
+    # Convertir los documentos a diccionarios
+    recommendations = [rec.to_mongo().to_dict() for rec in qs]
+    return recommendations
 
 def placeBet(userId: str, betInfo: dict) -> dict:
     """
@@ -62,14 +78,41 @@ def placeBet(userId: str, betInfo: dict) -> dict:
     betInfo should include at least: eventId, stake, odds.
     Returns a confirmation with betId, status and timestamp.
     """
+   
+    team_name = betInfo.get("team")
+
+       
+    print(f"betInfo: {betInfo}")
+
+
+    if not team_name:
+        raise ValueError("Bet information must include 'team'")
+    
+    team = Team.objects.filter(name=team_name).first()
+    print(f"Team: {team}")
+    if not team:
+        raise ValueError("Team not found in the database")
+ 
+    
+    team_id = team.team_id
+
+
+
     payload = {
         "user_id": userId,
-        "event_id": betInfo.get("eventId"),
+        "event_id": betInfo.get("eventId").replace("-", ""),
         "stake": betInfo.get("stake"),
         "odds": betInfo.get("odds"),
         "status": "placed",
+        "team": team
     }
+
+    print (f"Payload: {payload}")
+
+
     bet_id = create_record("bet", payload)
+
+
     return {
         "betId": bet_id,
         "status": "placed",
