@@ -22,5 +22,6 @@ urlpatterns = [
     path('api/', include('api_gateway.urls')),
     path('sports/', include('sports_data_integration.urls')),
     path('users/', include('user_management.urls')),
+    path('analytics/', include('analytics_engine.urls')),
 ]
 

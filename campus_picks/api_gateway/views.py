@@ -205,11 +205,14 @@ def create_bet(request):
     if not user_id:
         return Response({"error": "userId is required"}, status=status.HTTP_400_BAD_REQUEST)
     
+    print(request.data, "request.data")
     bet_info = {
         "eventId": request.data.get("eventId"),
         "stake": request.data.get("stake"),
-        "odds": request.data.get("odds")
+        "odds": request.data.get("odds"),
+        "team": request.data.get("team")  # Assuming team is part of the request
     }
+    
     result = placeBet(user_id, bet_info)
     return Response(result, status=status.HTTP_201_CREATED)
 
