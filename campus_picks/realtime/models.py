@@ -17,7 +17,10 @@ class EventRT(Document):
     awayTeam = StringField()     # Name of the away team
     endTime = DateTimeField()    # End date and time
     home_score = IntField()
-    away_score = IntField()      # Final score of the event
+    away_score = IntField()     # Final score of the event
+    home_logo = StringField()    
+    away_logo = StringField() 
+
 
     meta = {
         'collection': 'events'
