@@ -238,6 +238,8 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
             teams = event.get("teams", {})
             home_team = teams.get("home", {}).get("name")
             away_team = teams.get("away", {}).get("name")
+            home_logo = teams.get("home", {}).get("logo")
+            away_logo = teams.get("away", {}).get("logo")
             event_name = f"{home_team} vs {away_team}" if home_team and away_team else "Unnamed Event"
             scores = event.get("scores", {})
             home_score = scores.get("home", 0).get("total", 0) or 0
@@ -262,7 +264,9 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
                 "homeTeam": home_team,
                 "awayTeam": away_team,
                 "home_score": home_score,
-                "away_score": away_score
+                "away_score": away_score,
+                "home_logo": home_logo,
+                "away_logo": away_logo
 
             }
             events.append(event_data)
@@ -368,6 +372,8 @@ class FootballAPIAdapter:
             # Build event name from teams data
             home_team = teams.get("home", {}).get("name")
             away_team = teams.get("away", {}).get("name")
+            home_logo = teams.get("home", {}).get("logo")
+            away_logo = teams.get("away", {}).get("logo")
             event_name = f"{home_team} vs {away_team}" if home_team and away_team else "Unnamed Fixture"
             
             # Set sport as football
@@ -389,7 +395,9 @@ class FootballAPIAdapter:
                 "homeTeam": home_team,
                 "awayTeam": away_team,
                 "home_score": home_score,
-                "away_score": away_score
+                "away_score": away_score,
+                "home_logo": home_logo,
+                "away_logo": away_logo
             }
             events.append(event_data)
         return events
@@ -405,8 +413,12 @@ def poll_events(provider_id: str) -> None:
     # Create the adapter instance for basketball
     adapter_basket = BasketballAPIAdapter(provider_id, "3d554a0f6cde30dcb24c6c262a047429")
     adapter_football = FootballAPIAdapter(provider_id, "3d554a0f6cde30dcb24c6c262a047429")
+
     events_data_basket = adapter_basket.get_events(date_str)
+    print("Events fetched from Basketball API" )
     events_data_football = adapter_football.get_events(date_str)
+    print("Events fetched from Football API" )
+
     events_data = events_data_basket + events_data_football
     
     for event_data in events_data:
