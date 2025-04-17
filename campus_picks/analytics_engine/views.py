@@ -13,6 +13,9 @@ from rest_framework.response import Response
 from realtime.models import Metric, EventRT, RecommendedBet
 from acid_db.models import Team, Bet
 
+from collections import Counter
+from typing import Dict, List, Tuple
+
 
 
 
@@ -497,6 +500,51 @@ def triggerDailyAnalytics(request):
 #     return render(request, "dashboard.html", context)
 
 
+def get_sports_attention():
+
+    bets = Bet.objects.all()  # Puedes aplicar filtros si es necesario
+    events_id = set([bet.event.pk for bet in bets])
+    events = EventRT.objects.filter(id__in=events_id)  # Filtrar eventos por los IDs de las apuestas
+
+
+def get_bet_count_by_sport() -> Dict[str, int]:
+    """
+    Returns a dict  {sport_name: bet_count}.
+    It joins:
+      • Bet  ->  Event (relational FK)
+      • Event.event_id  ->  EventRT.acidEventId   (Mongo)
+    """
+    # 1) Build an in‑memory map from ACID Event‑ID   ➜   sport
+    event_to_sport = {
+        evt.acidEventId: (evt.sport or "unknown")
+        for evt in EventRT.objects.only("acidEventId", "sport")
+    }
+
+    for acid_id, sport in event_to_sport.items():
+        print (f"Event ID: {acid_id}  ➜  Sport: {sport}")
+        
+
+    #print (event_to_sport, "event_to_sport")
+
+    # 2) Count bets per sport
+    counter = Counter()
+    for bet in (
+        Bet.objects             # SELECT * FROM bet …
+        .select_related("event")  # join to Event once, avoids n+1 queries
+    ):
+
+        acid_id = str(bet.event.event_id)
+        acid_id_formatted = acid_id.replace("-", "").strip() # Remove dashes for matching
+        print (f"Bet event_id: {acid_id_formatted}")
+
+        sport   = event_to_sport.get(acid_id.strip().replace("-",""), "unknown")
+        counter[sport] += 1
+
+    print (f"Bet count by sport: {counter}")
+
+    return dict(counter)
+
+
 def dashboard_view(request):
     # Leer el filtro enviado por GET; si no se envía, se usa "all"
     selected_event = request.GET.get("event_id", "all")
@@ -537,6 +585,7 @@ def dashboard_view(request):
         converted = total_attendance
         only_proximity = total_proximity - total_attendance
         conversion_data = {"converted": converted, "only_proximity": only_proximity}
+        sport_bet_counts = get_bet_count_by_sport()
     
     context = {
         "events": events,
@@ -545,6 +594,7 @@ def dashboard_view(request):
         "all_events": list(Metric.objects.distinct("eventId")),  # Para el dropdown
         "selected_event": selected_event,
         "conversion_data": conversion_data,
+        "sport_bet_counts": sport_bet_counts,  # Para el gráfico de deportes
     }
     
     return render(request, "dashboard.html", context)

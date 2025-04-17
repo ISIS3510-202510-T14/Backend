@@ -89,11 +89,21 @@
     </div>
   </div>
 
+
+
   <!-- Gráfico circular para Conversión -->
   <div class="pie-chart-container">
     <div class="chart-title">Tasa de Conversión</div>
     <canvas id="conversionChart"></canvas>
   </div>
+
+
+  <!-- Gráfico de barras ‑ Bets por Deporte -->
+  <div class="chart-container">
+    <div class="chart-title">Sports attention</div>
+    <canvas id="betsBySportChart"></canvas>
+  </div>
+
 
   <script>
     // Datos para Attendance y Proximity (gráficos de barras)
@@ -208,6 +218,43 @@
         }
       }
     });
+
+
+
+const sportBetCounts = {{ sport_bet_counts|safe }};
+const sportLabels = Object.keys(sportBetCounts);
+const sportValues = Object.values(sportBetCounts);
+
+const ctx4 = document.getElementById('betsBySportChart').getContext('2d');
+const betsBySportChart = new Chart(ctx4, {
+  type: 'bar',
+  data: {
+    labels: sportLabels,
+    datasets: [{
+      label: 'Total Bets',
+      data: sportValues,
+      backgroundColor: 'rgba(255, 99, 132, 0.6)',
+    }]
+  },
+  options: {
+    scales: { y: { beginAtZero: true } },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const total = sportValues.reduce((a, v) => a + v, 0);
+            const val   = ctx.parsed.y;
+            const pct   = total ? ((val / total) * 100).toFixed(2) : 0;
+            return `${ctx.dataset.label}: ${val} (${pct}%)`;
+          }
+        }
+      },
+      legend: { display: false }
+    }
+  }
+});
+
+
   </script>
 </body>
 </html>
