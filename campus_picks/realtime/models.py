@@ -20,7 +20,8 @@ class EventRT(Document):
     away_score = IntField()     # Final score of the event
     home_logo = StringField()    
     away_logo = StringField() 
-
+    oddsA = FloatField()   # home‑team odd
+    oddsB = FloatField()   # away‑team odd
 
     meta = {
         'collection': 'events'

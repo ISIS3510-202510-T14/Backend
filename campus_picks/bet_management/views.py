@@ -1,9 +1,10 @@
 # bet_management.py
 import datetime
 import logging
+from sqlite3 import IntegrityError
 from dateutil.parser import parse as parse_date
 from bson import ObjectId
-from acid_db.models import Team, Bet
+from acid_db.models import Event, Team, Bet, User
 from realtime.models import RecommendedBet
 
 
@@ -75,44 +76,52 @@ def listRecommendedBets(userId: str, filterParams: dict) -> list:
 def placeBet(userId: str, betInfo: dict) -> dict:
     """
     Creates a new bet transaction in the ACID DB.
-    betInfo should include at least: eventId, stake, odds.
-    Returns a confirmation with betId, status and timestamp.
+    betInfo must contain: eventId, stake, odds, team.
+    Raises ValueError with a clear message if any FK row is missing.
     """
-   
+    # ------------------------------------------------------------------ FK checks
+    missing_fk = []
+
+    user = User.objects.filter(pk=userId).first()
+    if not user:
+        missing_fk.append(f"user '{userId}'")
+
+    event_raw = (betInfo.get("eventId") or "").replace("-", "")
+    event = Event.objects.filter(pk=event_raw).first()
+    if not event:
+        missing_fk.append(f"event '{event_raw}'")
+
     team_name = betInfo.get("team")
-
-       
-    print(f"betInfo: {betInfo}")
-
-
-    if not team_name:
-        raise ValueError("Bet information must include 'team'")
-    
     team = Team.objects.filter(name=team_name).first()
-    print(f"Team: {team}")
     if not team:
-        raise ValueError("Team not found in the database")
- 
-    
-    team_id = team.team_id
+        missing_fk.append(f"team '{team_name}'")
 
+    if missing_fk:
+        message = "Foreign‑key(s) not found: " + ", ".join(missing_fk)
+        logger.error(message)
+        raise ValueError(message)
 
-
+    # ------------------------------------------------------------------ insert bet
     payload = {
-        "user_id": userId,
-        "event_id": betInfo.get("eventId").replace("-", ""),
-        "stake": betInfo.get("stake"),
-        "odds": betInfo.get("odds"),
+        "user":   user,        # pass model instances, not raw ids
+        "event":  event,
+        "team":   team,
+        "stake":  betInfo.get("stake"),
+        "odds":   betInfo.get("odds"),
         "status": "placed",
-        "team": team
     }
 
-    print (f"Payload: {payload}")
+    logger.debug("Attempting to create Bet with payload: %s", payload)
 
+    try:
+        bet_id = create_record("bet", payload)
+    except IntegrityError as exc:
+        # This should rarely happen now, but if it does we’ll know why
+        err = f"IntegrityError while inserting bet: {exc}. Payload: {payload}"
+        logger.exception(err)
+        raise ValueError(err) from exc
 
-    bet_id = create_record("bet", payload)
-
-
+    # ------------------------------------------------------------------ success
     return {
         "betId": bet_id,
         "status": "placed",

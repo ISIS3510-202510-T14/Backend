@@ -300,7 +300,11 @@ def get_events(request):
     if 'endDate' in request.query_params:
         filterParams['endDate'] = request.query_params['endDate']
     events = listEvents(filterParams)
-    print(events[0])
+    if not events:
+      return Response(
+          {"events": [], "message": "No events match the given criteria."},
+          status=status.HTTP_200_OK
+      )
     return Response({"events": events}, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
