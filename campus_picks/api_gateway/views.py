@@ -18,6 +18,11 @@ from user_management.views import (
     deleteUser
 )
 
+from acid_db.models import User
+from rest_framework.decorators import api_view
+from rest_framework import status
+from rest_framework.response import Response
+
 # (Any other imports you need can remain here)
 
 
@@ -57,7 +62,22 @@ from user_management.views import (
     
 #     return Response(status=200)
 
+@api_view(['GET'])
+def login_probe(request):
+    """
+    GET /api/auth/login?uid=<firebase_uid>
 
+    • 200  – row exists, so the mobile app continues
+    • 404  – row missing -> the app treats Firebase login as a failure
+    """
+    uid = request.query_params.get("uid")
+    if not uid:
+        return Response({"error": "Missing uid"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(pk=uid).exists():
+        return Response({"ok": True}, status=status.HTTP_200_OK)
+
+    return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
 @api_view(['POST'])
 def create_user_endpoint(request):

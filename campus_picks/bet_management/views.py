@@ -6,6 +6,8 @@ from dateutil.parser import parse as parse_date
 from bson import ObjectId
 from acid_db.models import Event, Team, Bet, User
 from realtime.models import RecommendedBet
+from acid_db.models import User, Event, Team, Bet
+from django.core.exceptions import ObjectDoesNotExist
 
 
 
@@ -74,58 +76,40 @@ def listRecommendedBets(userId: str, filterParams: dict) -> list:
     return recommendations
 
 def placeBet(userId: str, betInfo: dict) -> dict:
-    """
-    Creates a new bet transaction in the ACID DB.
-    betInfo must contain: eventId, stake, odds, team.
-    Raises ValueError with a clear message if any FK row is missing.
-    """
-    # ------------------------------------------------------------------ FK checks
-    missing_fk = []
-
-    user = User.objects.filter(pk=userId).first()
-    if not user:
-        missing_fk.append(f"user '{userId}'")
-
-    event_raw = (betInfo.get("eventId") or "").replace("-", "")
-    event = Event.objects.filter(pk=event_raw).first()
-    if not event:
-        missing_fk.append(f"event '{event_raw}'")
-
+    # --- 0) Sanity‑check the payload you already build ---
     team_name = betInfo.get("team")
-    team = Team.objects.filter(name=team_name).first()
-    if not team:
-        missing_fk.append(f"team '{team_name}'")
+    if not team_name:
+        raise ValueError("Bet information must include 'team'")
 
-    if missing_fk:
-        message = "Foreign‑key(s) not found: " + ", ".join(missing_fk)
-        logger.error(message)
-        raise ValueError(message)
-
-    # ------------------------------------------------------------------ insert bet
-    payload = {
-        "user":   user,        # pass model instances, not raw ids
-        "event":  event,
-        "team":   team,
-        "stake":  betInfo.get("stake"),
-        "odds":   betInfo.get("odds"),
-        "status": "placed",
-    }
-
-    logger.debug("Attempting to create Bet with payload: %s", payload)
+    # --- 1) Verify *all* foreign keys really exist --------------------------
+    try:
+        user   = User.objects.get(pk=userId)
+    except ObjectDoesNotExist:
+        raise ValueError(f"User '{userId}' not registered")
 
     try:
-        bet_id = create_record("bet", payload)
-    except IntegrityError as exc:
-        # This should rarely happen now, but if it does we’ll know why
-        err = f"IntegrityError while inserting bet: {exc}. Payload: {payload}"
-        logger.exception(err)
-        raise ValueError(err) from exc
+        event  = Event.objects.get(event_id=betInfo["eventId"].replace("-", ""))
+    except ObjectDoesNotExist:
+        raise ValueError(f"Event '{betInfo['eventId']}' not found")
 
-    # ------------------------------------------------------------------ success
+    team = Team.objects.filter(name=team_name).first()
+    if not team:
+        raise ValueError(f"Team '{team_name}' not found")
+
+    # --- 2) Create the bet (now safe) ---------------------------------------
+    bet = Bet.objects.create(
+        user   = user,
+        event  = event,
+        team   = team,
+        stake  = betInfo["stake"],
+        odds   = betInfo["odds"],
+        status = "placed",
+    )
+
     return {
-        "betId": bet_id,
-        "status": "placed",
-        "timestamp": datetime.datetime.utcnow().isoformat()
+        "betId"    : str(bet.bet_id),
+        "status"   : bet.status,
+        "timestamp": bet.created_at.isoformat(),
     }
 
 def getBetHistory(userId: str) -> list:
