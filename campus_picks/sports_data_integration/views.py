@@ -19,6 +19,20 @@ from acid_db.views import read_record, create_record, update_record
 
 logger = logging.getLogger(__name__)
 
+def generate_random_odds() -> tuple[float, float]:
+    """
+    Very small ‘bookmaker margin’ so the two odds are realistic.
+    Returns (oddsA, oddsB) rounded to 2 decimals.
+    """
+    import random, math
+
+    base = random.uniform(1.35, 2.80)        
+    margin = random.uniform(0.05, 0.60)     
+    if random.random() > 0.50:
+        oddsA, oddsB = base, base + margin
+    else:
+        oddsA, oddsB = base + margin, base
+    return round(oddsA, 2), round(oddsB, 2)
 
 def get_random_location():
     locations = [
@@ -269,6 +283,8 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
                 "away_logo": away_logo
 
             }
+            oddsA, oddsB = generate_random_odds()
+            event_data.update({"oddsA": oddsA, "oddsB": oddsB})
             events.append(event_data)
         return events
 
@@ -399,6 +415,8 @@ class FootballAPIAdapter:
                 "home_logo": home_logo,
                 "away_logo": away_logo
             }
+            oddsA, oddsB = generate_random_odds()
+            event_data.update({"oddsA": oddsA, "oddsB": oddsB})
             events.append(event_data)
         return events
     
