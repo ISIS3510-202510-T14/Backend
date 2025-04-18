@@ -2,10 +2,11 @@
 import datetime
 import logging
 from sqlite3 import IntegrityError
+from typing import Dict, List
 from dateutil.parser import parse as parse_date
 from bson import ObjectId
 from acid_db.models import Event, Team, Bet, User
-from realtime.models import RecommendedBet
+from realtime.models import EventRT, RecommendedBet
 from acid_db.models import User, Event, Team, Bet
 from django.core.exceptions import ObjectDoesNotExist
 
@@ -111,16 +112,74 @@ def placeBet(userId: str, betInfo: dict) -> dict:
         "status"   : bet.status,
         "timestamp": bet.created_at.isoformat(),
     }
+def getBetHistory(userId: str) -> List[Dict]:
+    """
+    Returns *both* the identifiers the app still needs (betId, eventId, teamId)
+    **and** the human‑readable fields required for display.
 
-def getBetHistory(userId: str) -> list:
-    """
-    Returns a list of bets placed by the user from the ACID DB.
-    """
-    queryParams = {
-        "filters": [{"field": "user_id", "operator": "=", "value": userId}],
-        "sort": {"field": "created_at", "direction": "DESC"}
+    Each element:
+    {
+      "betId"     : "0039b9b3‑d1b1‑47c6‑8e90‑4f95b146dc83",
+      "eventId"   : "65680a73‑25b1‑55e4‑97e4‑33e50ce5155e",
+      "teamId"    : "163d78a7‑2bd8‑43ee‑acc0‑a10e53f023e1",
+      "match"     : "Osos de Manatí vs Gigantes de Carolina",
+      "sport"     : "basketball",
+      "yourTeam"  : "Osos de Manatí",
+      "stake"     : 1000.0,
+      "odds"      : 2.71,
+      "status"    : "placed",
+      "placedAt"  : "2025‑04‑18T19:25:00Z",
+      "updatedAt" : "2025‑04‑18T19:25:00Z"
     }
-    return query_records("bet", queryParams)
+    """
+    # 1) pull the user’s bets (newest first) with FK objects pre‑fetched
+    bets = (
+        Bet.objects
+        .filter(user__pk=userId)
+        .select_related("event", "team")
+        .order_by("-created_at")
+    )
+
+    history: List[Dict] = []
+    for bet in bets:
+        event = bet.event
+
+        # -------------------------
+        # Build “Home vs Away” name
+        # -------------------------
+        home_name = (
+            event.home_team.first().name
+            if event.home_team.exists() else "Home"
+        )
+        away_name = (
+            event.away_team.first().name
+            if event.away_team.exists() else "Away"
+        )
+        match_title = f"{home_name} vs {away_name}"
+
+        # sport label (from the RT document, if any)
+        rt_doc = EventRT.objects(acidEventId=str(event.event_id).replace("-", "")).first()
+        sport   = getattr(rt_doc, "sport", None) or "unknown"
+
+        # ------------- assemble friendly record -------------
+        history.append({
+            # identifiers the client may still cache
+            "betId"   : str(bet.bet_id),
+            "eventId" : str(event.event_id),
+            "teamId"  : str(bet.team.team_id),
+
+            # user‑facing data
+            "match"     : match_title,
+            "sport"     : sport,
+            "yourTeam"  : bet.team.name,
+            "stake"     : float(bet.stake),
+            "odds"      : float(bet.odds),
+            "status"    : bet.status,
+            "placedAt"  : bet.created_at.isoformat(),
+            "updatedAt" : bet.updated_at.isoformat(),
+        })
+
+    return history
 
 def getBetDetails(betId: str) -> dict:
     """
