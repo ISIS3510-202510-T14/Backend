@@ -22,307 +22,225 @@ from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
-def runDailyAnalytics():
-    """
-    Main entry point for the daily analytics tasks.
-    Triggered by a scheduler (cron, APScheduler, etc.) ideally at 6 pm, Colombian time.
+from mongoengine.queryset.visitor import Q
+from django.conf import settings
+from pymongo import MongoClient
+from acid_db.models import Bet
+from realtime.models import EventRT, RecommendedBet, Incident, Metric
+import datetime
+import random
+import logging
 
-    Steps:
-      1. Reads user bet data from PostgreSQL (ACID).
-      2. Reads incident data (proximity, attendance) from MongoDB.
-      3. Generates recommended bets per user (dummy logic).
-      4. Stores recommended bets in the 'recommendedBets' collection.
-      5. Calculates metrics (conversion rate, total attendance, etc.).
-      6. Stores metrics in the 'analytics' collection.
-    """
-    # print("Starting daily analytics ...")
+logger = logging.getLogger(__name__)
 
-    # # (A) Ingest all events from 'events' collection in Mongo:
-    # all_events = read_data("events")  # returns a list of EventRT documents (or dicts)
-    # if not all_events:
-    #     all_events = []
-    # print(f"Found {len(all_events)} events in MongoDB.")
 
-    # # (B) Ingest bets (ACID DB):
-    # bet_query = {"filters": []}
-    # bets = query_records("bet", bet_query)
-    # print(f"Found {len(bets)} bets in the SQL DB.")
-    
-    # # (C) Generate user recommendations referencing random events:
-    # recommendations_by_user = {}
-    
-    # for bet in bets:
-    #     # Example bet dict:
-    #     # {
-    #     #   'user': UUID('...'),
-    #     #   'event': UUID('...'),
-    #     #   'stake': Decimal('50.00'),
-    #     #   'odds': Decimal('1.85'),
-    #     #   'status': 'placed',
-    #     #   'betId': '...'
-    #     # }
-    #     user_id_str = str(bet["user"])  # Convert UUID to string
-    #     if user_id_str not in recommendations_by_user:
-    #         recommendations_by_user[user_id_str] = []
-        
-    #     # We'll generate 1 or 2 recommended bets for each user's bet:
-    #     num_recs = random.randint(1, 2)
-    #     for _ in range(num_recs):
-    #         if not all_events:
-    #             continue
-            
-    #         # Pick a random event from the existing events collection.
-    #         # We'll store the MongoDB _id (converted to string) to be safe.
-    #         random_event_doc = random.choice(all_events)
-    #         event_id_str = str(random_event_doc.id)
-            
-    #         recommendation_id = f"reco-{random.randint(100000, 999999)}"
-    #         recommendation = {
-    #             "recommendationId": recommendation_id,
-    #             "userId": user_id_str,
-    #             "eventId": event_id_str,    # referencing an existing event in Mongo
-    #             "betType": random.choice(["WIN", "OVER_UNDER"]),
-    #             "description": "A recommended event chosen from the existing events",
-    #             "createdAt": datetime.datetime.utcnow().isoformat()
-    #         }
-    #         recommendations_by_user[user_id_str].append(recommendation)
+from mongoengine.queryset.visitor import Q
+from django.conf import settings
+from pymongo import MongoClient
+from acid_db.models import Bet
+from realtime.models import EventRT, RecommendedBet, Incident, Metric
+import datetime
+import random
+import logging
 
-    # print(f"Built recommendations for {len(recommendations_by_user)} distinct user(s).")
-    
-    # # (D) Store recommendations in Mongo (one doc per recommendation):
-    # for user_id, recs in recommendations_by_user.items():
-    #     storeRecommendations(user_id, recs)
-    
+logger = logging.getLogger(__name__)
 
-        # Agrupar apuestas por usuario y por equipo, obteniendo también el nombre del equipo.
 
+from mongoengine.queryset.visitor import Q
+from django.conf import settings
+from pymongo import MongoClient
+from acid_db.models import Bet
+from realtime.models import EventRT, RecommendedBet, Incident, Metric
+import datetime
+import random
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _collect_user_team_data():
+    print("[DEBUG] Starting user-team aggregation...")
     user_team_bets = {}
-    
-    bets = Bet.objects.all()  # Puedes aplicar filtros si es necesario
-
     betted_teams = {}
-
-    for bet in bets:
-        user_id = str(bet.user.pk)
-        team_id = str(bet.team.pk)
+    for bet in Bet.objects.select_related('team', 'user').all():
+        uid = str(bet.user.pk)
+        tid = str(bet.team.pk)
         team_name = bet.team.name
-        if user_id not in user_team_bets:
-            user_team_bets[user_id] = {}
-        if team_id not in user_team_bets[user_id]:
-            user_team_bets[user_id][team_id] = {"count": 0, "team_name": team_name}
-        if team_id not in betted_teams:
-            betted_teams[team_id] = team_name
-        user_team_bets[user_id][team_id]["count"] += 1
-        
-
-    THRESHOLD = 2  # Umbral para considerar apuestas recurrentes en el mismo equipo
-    recommendations_by_user = {}
-
-    team_recommendation_data = {}
-
-    for team_id, team_name in betted_teams.items():
-        # Buscar todos los eventos próximos o en vivo para ese equipo
-        upcoming_events = list(EventRT.objects.filter(
-            (Q(homeTeam=team_name) | Q(awayTeam=team_name)) & 
-            Q(status__in=["upcoming", "live"])
-        ).order_by("startTime"))
-
-        #print (f"Upcoming events for {team_name}: {upcoming_events}")
-        
-        # # Calcular rendimiento en los últimos 2 semanas para ese equipo.
-        # two_weeks_ago = datetime.datetime.utcnow() - datetime.timedelta(weeks=2)
-        # recent_events = EventRT.objects.filter(
-        #     (Q(homeTeam=team_name) | Q(awayTeam=team_name)) &
-        #     Q(status="ended") &
-        #     Q(endTime__gte=two_weeks_ago)
-        # )
-        # print(f"Recent events for {team_name}: {recent_events}")
-
-        recent_events = EventRT.objects.filter(
-            (Q(homeTeam=team_name) | Q(awayTeam=team_name)) &
-            Q(status="ended")
-            )
-
-        wins = 0
-        losses = 0
-        for event in recent_events:
-            if event.home_score is not None and event.away_score is not None:
-                if event.homeTeam == team_name:
-                    if event.home_score > event.away_score:
-                        wins += 1
-                    elif event.home_score < event.away_score:
-                        losses += 1
-                elif event.awayTeam == team_name:
-                    if event.away_score > event.home_score:
-                        wins += 1
-                    elif event.away_score < event.home_score:
-                        losses += 1
-        performance = {"wins": wins, "losses": losses}
-        team_recommendation_data[team_id] = {
-            "team_name": team_name,
-            "upcoming_events": upcoming_events,
-            "performance": performance
-        }        
+        print(f"[DEBUG] Processing bet: user={uid}, team={tid} ({team_name})")
+        user_team_bets.setdefault(uid, {}).setdefault(tid, {'count': 0, 'team_name': team_name})['count'] += 1
+        betted_teams.setdefault(tid, team_name)
+    print(f"[DEBUG] Aggregated data for {len(user_team_bets)} users and {len(betted_teams)} teams.")
+    return user_team_bets, betted_teams
 
 
+def _fetch_team_data(betted_teams):
+    print("[DEBUG] Fetching team data (upcoming events & performance)...")
+    team_data = {}
+    two_weeks_ago = datetime.datetime.utcnow() - datetime.timedelta(weeks=2)
+    for tid, name in betted_teams.items():
+        print(f"[DEBUG] Team {tid}: {name}")
+        upcoming = list(
+            EventRT.objects.filter(
+                (Q(homeTeam=name) | Q(awayTeam=name)) & Q(status__in=['upcoming', 'live'])
+            ).order_by('startTime')
+        )
+        print(f"[DEBUG]  Upcoming events count: {len(upcoming)}")
+        recent = EventRT.objects.filter(
+            (Q(homeTeam=name) | Q(awayTeam=name)) & Q(status='ended') & Q(endTime__gte=two_weeks_ago)
+        )
+        wins = sum(
+            1 for e in recent if (e.homeTeam == name and e.home_score > e.away_score)
+        )
+        losses = sum(
+            1 for e in recent if (e.homeTeam == name and e.home_score < e.away_score)
+        )
+        wins += sum(
+            1 for e in recent if (e.awayTeam == name and e.away_score > e.home_score)
+        )
+        losses += sum(
+            1 for e in recent if (e.awayTeam == name and e.away_score < e.home_score)
+        )
+        print(f"[DEBUG]  Recent performance: {wins} wins, {losses} losses")
+        team_data[tid] = {
+            'team_name': name,
+            'upcoming': upcoming,
+            'performance': {'wins': wins, 'losses': losses}
+        }
+    print("[DEBUG] Completed fetching team data.")
+    return team_data
 
 
-
-    # Paso 2: Generar recomendaciones por usuario usando la información calculada
-    recommendations_by_user = {}
-
-    for user_id, teams in user_team_bets.items():
-        for team_id, info in teams.items():
-            if info["count"] >= THRESHOLD and team_id in team_recommendation_data:
-                data = team_recommendation_data[team_id]
-                team_name = data["team_name"]
-                upcoming_events = data["upcoming_events"]
-                wins = data["performance"]["wins"]
-                losses = data["performance"]["losses"]
-                
-                # Definir el mensaje base según el rendimiento reciente del equipo
-                if losses > wins:
-                    bet_type = "caution"
-                    base_message = (f"We know you love {team_name}, but based on its recent performance "
-                                    f"(Wins: {wins}, Losses: {losses}), you might consider refraining from betting.")
-                else:
-                    bet_type = "win"
-                    base_message = (f"{team_name} has been performing well recently "
-                                    f"(Wins: {wins}, Losses: {losses}). Consider betting on their victory.")
-                
-                # Generar una recomendación para cada evento próximo encontrado
-                for event in upcoming_events:
-                    recommendation_id = f"reco-{random.randint(100000, 999999)}"
-                    description = f"{base_message} Upcoming match: {event.homeTeam} vs {event.awayTeam} starts at {event.startTime}."
-
-                    recommendation = {
-                        "recommendationId": recommendation_id,
-                        "userId": user_id,
-                        "eventId": str(event.id),  # O event.acidEventId si prefieres
-                        "betType": bet_type,
-                        "description": description,
-                        "createdAt": datetime.datetime.utcnow().isoformat()
-                    }
-                    if user_id not in recommendations_by_user:
-                        recommendations_by_user[user_id] = []
-                    recommendations_by_user[user_id].append(recommendation)
+def _fetch_popular_events(user_team_bets):
+    print("[DEBUG] Checking for fallback popular events...")
+    total_bets = sum(sum(t['count'] for t in teams.values()) for teams in user_team_bets.values())
+    print(f"[DEBUG] Total bets = {total_bets}, total users = {len(user_team_bets)}")
+    if len(user_team_bets) <= 1 or total_bets < 5:
+        print("[DEBUG] Using popular events fallback.")
+        coll = Metric._get_collection()
+        top = list(coll.find().sort('attendance', -1).limit(5))
+        popular_ids = [d['eventId'] for d in top]
+        print(f"[DEBUG] Popular event IDs: {popular_ids}")
+        events = list(EventRT.objects.filter(
+            acidEventId__in=popular_ids,
+            status__in=['upcoming', 'live']
+        ))
+        print(f"[DEBUG] Fetched {len(events)} popular events.")
+        return events
+    print("[DEBUG] No popular fallback needed.")
+    return []
 
 
-    for user_id, recs in recommendations_by_user.items():
-        for rec in recs:
-            # Convertir la cadena ISO a objeto datetime (ajustando la "Z" si existe)
-            created_at_iso = rec.get("createdAt")
-            created_at_dt = datetime.datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
-            recommended_bet = RecommendedBet(
-                recommendationId=rec["recommendationId"],
-                userId=rec["userId"],
-                eventId=rec["eventId"],
-                betType=rec["betType"],
-                description=rec["description"],
-                createdAt=created_at_dt
-            )
-            recommended_bet.save()
-    
-
-    print(f"Built personalized recommendations for {len(recommendations_by_user)} distinct user(s).")
-
-    # # Almacenar las recomendaciones en la colección 'recommendedBets'
-    # for user_id, recs in recommendations_by_user.items():
-    #     storeRecommendations(user_id, recs)
-
-    for user_id, recs in recommendations_by_user.items():
-        for rec in recs:
-            # Convertir la cadena ISO a objeto datetime (ajustando la "Z" si existe)
-            created_at_iso = rec.get("createdAt")
-            created_at_dt = datetime.datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
-            recommended_bet = RecommendedBet(
-                recommendationId=rec["recommendationId"],
-                userId=rec["userId"],
-                eventId=rec["eventId"],
-                betType=rec["betType"],
-                description=rec["description"],
-                createdAt=created_at_dt
-            )
-            recommended_bet.save()
-
-        # -----------------------------------------
-    # 4) Ingest Incidents (Real-Time DB)
-    # -----------------------------------------
-    incidents = read_data("incidents")
-
-    print(f"Found {len(incidents)} incidents in MongoDB.")
-    if not incidents:
-        incidents = []
-    
-    # Filtrar incidentes del día inmediatamente anterior
-    # Se asume que la tarea se ejecuta a las 00:00 UTC (o se ajusta según la zona horaria)
-    yesterday = datetime.datetime.utcnow() - datetime.timedelta(days=1)
-    start_of_yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_yesterday = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
-    
-    filtered_incidents = []
-    for inc in incidents:
-        # Manejar tanto dicts como objetos de MongoEngine
-        ts = inc.get("timestamp") if isinstance(inc, dict) else getattr(inc, "timestamp", None)
-        if ts and isinstance(ts, str):
-            ts = datetime.datetime.fromisoformat(ts)
-        if ts and start_of_yesterday <= ts <= end_of_yesterday:
-            filtered_incidents.append(inc)
-    
-    # Agrupar incidentes por evento y contar los tipos
-    event_metrics = {}
-    for inc in filtered_incidents:
-        if isinstance(inc, dict):
-            event_id = inc.get("eventId")
-            inc_type = inc.get("incidentType")
-        else:
-            event_id = getattr(inc, "eventId", None)
-            inc_type = getattr(inc, "incidentType", None)
-        if event_id is None:
+def _generate_recommendations(user_team_bets, team_data, popular_events):
+    print("[DEBUG] Generating recommendations...")
+    recs = {}
+    for uid, teams in user_team_bets.items():
+        print(f"[DEBUG] User {uid} has {len(teams)} teams.")
+        # Fallback for users with very few team interactions
+        if len(teams) < 2 and popular_events:
+            print(f"[DEBUG] User {uid} receives popular event recommendations.")
+            for evt in popular_events:
+                rec = {
+                    'recommendationId': f"reco-{random.randint(100000, 999999)}",
+                    'userId': uid,
+                    'eventId': str(evt.id),
+                    'betType': 'popular',
+                    'description': f"Check out this popular match: {evt.homeTeam} vs {evt.awayTeam} at {evt.startTime}.",
+                    'createdAt': datetime.datetime.utcnow().isoformat()
+                }
+                print(f"[DEBUG] Popular rec for {uid}: {rec}")
+                recs.setdefault(uid, []).append(rec)
             continue
-        if event_id not in event_metrics:
-            event_metrics[event_id] = {"attendance": 0, "proximity": 0}
-        if inc_type == "attendance":
-            event_metrics[event_id]["attendance"] += 1
-        elif inc_type == "proximity":
-            event_metrics[event_id]["proximity"] += 1
+        # Personalized for every team regardless of bet count
+        for tid, info in teams.items():
+            data = team_data.get(tid)
+            if not data:
+                print(f"[DEBUG] No team data for team {tid}, skipping.")
+                continue
+            wins = data['performance']['wins']
+            losses = data['performance']['losses']
+            for evt in data['upcoming']:
+                rec = {
+                    'recommendationId': f"reco-{random.randint(100000, 999999)}",
+                    'userId': uid,
+                    'eventId': str(evt.id),
+                    'betType': 'caution' if losses > wins else 'win',
+                    'description': (
+                        f"{data['team_name']} recent record: {wins}W-{losses}L. "
+                        f"Next: {evt.homeTeam} vs {evt.awayTeam} at {evt.startTime}."
+                    ),
+                    'createdAt': datetime.datetime.utcnow().isoformat()
+                }
+                print(f"[DEBUG] Personalized rec for {uid}: {rec}")
+                recs.setdefault(uid, []).append(rec)
+    print("[DEBUG] Completed recommendation generation.")
+    return recs
 
-        # ----------------------------------
-    # 5) Update Metrics per event in MongoDB
-    # ----------------------------------
-    now_utc = datetime.datetime.utcnow()
-    analytics_collection = Metric._get_collection()
 
-    for event_id, counts in event_metrics.items():
-        new_attendance = counts["attendance"]
-        new_proximity = counts["proximity"]
+def _persist_recommendations(recommendations_by_user):
+    print("[DEBUG] Persisting recommendations to MongoDB...")
+    for uid, rec_list in recommendations_by_user.items():
+        for rec in rec_list:
+            print(f"[DEBUG] Saving rec: {rec}")
+            rec_time = datetime.datetime.fromisoformat(rec['createdAt'])
+            RecommendedBet(
+                recommendationId=rec['recommendationId'],
+                userId=uid,
+                eventId=rec['eventId'],
+                betType=rec['betType'],
+                description=rec['description'],
+                createdAt=rec_time
+            ).save()
+    print("[DEBUG] All recommendations persisted.")
 
-        # Usamos $inc para sumar los nuevos contadores a los ya existentes
-        analytics_collection.update_one(
-            {"eventId": event_id},
-            {
-                "$inc": {"attendance": new_attendance, "proximity": new_proximity},
-                "$set": {"timestamp": now_utc}
-            },
+
+def _process_incidents():
+    print("[DEBUG] Processing incidents and updating metrics...")
+    yesterday = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+    start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+    print(f"[DEBUG] Incident window: {start} to {end}")
+    incidents = Incident.objects.filter(timestamp__gte=start, timestamp__lte=end)
+    metrics = {}
+    for inc in incidents:
+        eid = inc.eventId
+        metrics.setdefault(eid, {'attendance': 0, 'proximity': 0})
+        metrics[eid][inc.incidentType] += 1
+        print(f"[DEBUG] Incident {inc.incidentType} for event {eid}")
+    coll = Metric._get_collection()
+    now = datetime.datetime.utcnow()
+    for eid, counts in metrics.items():
+        print(f"[DEBUG] Updating metrics for {eid}: {counts}")
+        coll.update_one(
+            {'eventId': eid},
+            {'$inc': {'attendance': counts['attendance'], 'proximity': counts['proximity']},
+             '$set': {'timestamp': now}},
             upsert=True
         )
-        
-        # Ahora obtenemos los valores acumulados para recalcular conversion_rate
-        doc = analytics_collection.find_one({"eventId": event_id})
-        if doc:
-            total_attendance = doc.get("attendance", 0)
-            total_proximity = doc.get("proximity", 0)
-            new_conversion_rate = (total_attendance / total_proximity) if total_proximity > 0 else 0.0
-            new_conversion_rate = round(new_conversion_rate, 2)
-            
-            # Actualizamos la tasa de conversión en el mismo documento
-            analytics_collection.update_one(
-                {"eventId": event_id},
-                {"$set": {"conversion_rate": new_conversion_rate, "timestamp": now_utc}}
-            )
-            print(f"Updated event {event_id}: attendance={total_attendance}, proximity={total_proximity}, conversion_rate={new_conversion_rate}")
+        doc = coll.find_one({'eventId': eid})
+        total_att = doc.get('attendance', 0)
+        total_prox = doc.get('proximity', 0)
+        conv_rate = round((total_att / total_prox) if total_prox else 0, 2)
+        coll.update_one(
+            {'eventId': eid},
+            {'$set': {'conversion_rate': conv_rate, 'timestamp': now}}
+        )
+        print(f"[DEBUG] Metrics for {eid} saved: attendance={total_att}, proximity={total_prox}, conversion_rate={conv_rate}")
+    print("[DEBUG] Incident processing complete.")
 
-    print("Daily analytics completed successfully.")
+
+def runDailyAnalytics():
+    print("[INFO] === Starting runDailyAnalytics ===")
+    user_team_bets, betted_teams = _collect_user_team_data()
+    team_data = _fetch_team_data(betted_teams)
+    popular_events = _fetch_popular_events(user_team_bets)
+    recommendations = _generate_recommendations(user_team_bets, team_data, popular_events)
+    _persist_recommendations(recommendations)
+    print(f"[INFO] Built recommendations for {len(recommendations)} users.")
+
+    _process_incidents()
+    print("[INFO] Completed incidents & metrics update.")
+
+    print("[INFO] === runDailyAnalytics finished ===")
 
 
 @api_view(['POST'])
