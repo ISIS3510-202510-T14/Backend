@@ -18,15 +18,19 @@ class Command(BaseCommand):
         scheduler = BlockingScheduler(timezone="America/Bogota")
         scheduler.add_jobstore(DjangoJobStore(), "default")
 
-        # Schedule the daily analytics job at 6 PM
+        # Schedule the daily analytics job at the specified hour and minute
+        analytics_hour = 20
+        analytics_minute = 28
         scheduler.add_job(
             runDailyAnalytics,
-            trigger=CronTrigger(hour=18, minute=20),  # 18:00 every day
+            trigger=CronTrigger(hour=analytics_hour, minute=analytics_minute),
             id="daily_analytics_job",
             max_instances=1,
             replace_existing=True
         )
-        self.stdout.write("Scheduled daily analytics job (ID='daily_analytics') at 18:00 every day.")
+        self.stdout.write(
+            f"Scheduled daily analytics job (ID='daily_analytics_job') at {analytics_hour:02d}:{analytics_minute:02d} every day."
+        )
 
         # Add the cleanup job, supplying required max_age
         scheduler.add_job(
