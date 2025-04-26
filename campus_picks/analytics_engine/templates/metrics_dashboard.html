@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>API Metrics Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 2rem; background-color: #f5f5f5; }
+    h1 { color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 0.75rem; border: 1px solid #ccc; text-align: left; }
+    th { background-color: #eee; }
+    form { margin-bottom: 1rem; }
+    input[type="date"] { padding: 0.5rem; margin-right: 0.5rem; }
+    button { padding: 0.5rem 1rem; }
+  </style>
+</head>
+<body>
+  <h1>API Metrics Dashboard</h1>
+
+  <form method="get">
+    <label for="start_date">Start Date:</label>
+    <input type="date" name="start_date" value="{{ start_date }}">
+
+    <label for="end_date">End Date:</label>
+    <input type="date" name="end_date" value="{{ end_date }}">
+
+    <label for="min_duration">Min Response Time (ms):</label>
+    <input type="number" name="min_duration" value="{{ min_duration }}" min="0">
+
+    <label for="max_duration">Max Response Time (ms):</label>
+    <input type="number" name="max_duration" value="{{ max_duration }}" min="0">
+
+    <button type="submit">Filter</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Endpoint</th>
+        <th>Average Response Time (ms)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in aggregated_data %}
+        <tr>
+          <td>{{ item.endpoint }}</td>
+          <td>{{ item.avg_duration|floatformat:2 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="2">No data available.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
