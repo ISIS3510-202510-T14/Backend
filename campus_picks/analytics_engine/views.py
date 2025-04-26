@@ -10,8 +10,12 @@ from django.shortcuts import render
 from pymongo import MongoClient
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework import status
+from django.db.models import Avg
 from realtime.models import Metric, EventRT, RecommendedBet
 from acid_db.models import Team, Bet
+from analytics_engine.serializers import ApiLogSerializer
+from analytics_engine.models import ApiLog
 
 from collections import Counter
 from typing import Dict, List, Tuple
@@ -517,3 +521,94 @@ def dashboard_view(request):
     
     return render(request, "dashboard.html", context)
 
+@api_view(['POST'])
+def log_api_metrics(request):
+    data = request.data
+
+    # Verifica si es una lista
+    if isinstance(data, list):
+        for item in data:
+            timestamp_str = item.get('timestamp')
+            try:
+                timestamp = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+            except (TypeError, ValueError):
+                return Response({"error": "Invalid timestamp format."}, status=400)
+
+            ApiLog.objects.create(
+                endpoint=item.get('endpoint', ''),
+                duration=item.get('duration', 0),
+                status_code=item.get('statusCode'),
+                success=bool(item.get('success', 0)),
+                error=item.get('error', ''),
+                timestamp=timestamp,
+            )
+        return Response({"message": "Metrics logged successfully."}, status=201)
+
+    # Si no es lista, devuelva error
+    return Response({"error": "Expected a list of metrics."}, status=400)
+
+@api_view(['GET'])
+def check_metrics(request):
+    """
+    Lista con promedio de duración por endpoint.
+    Filtros: start_date, end_date (formato YYYY-MM-DD)
+    """
+    logs = ApiLog.objects.all()
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            logs = logs.filter(timestamp__gte=start)
+        except ValueError:
+            return Response({'error': 'start_date inválido. Formato esperado: YYYY-MM-DD'}, status=400)
+
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+            logs = logs.filter(timestamp__lte=end)
+        except ValueError:
+            return Response({'error': 'end_date inválido. Formato esperado: YYYY-MM-DD'}, status=400)
+
+    data = logs.values('endpoint').annotate(average_response=Avg('duration')).order_by('endpoint')
+
+    return Response(data)
+
+def metrics_dashboard_view(request):
+    # Captura los parámetros GET
+    from django.db.models import Avg
+    from datetime import datetime
+
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    min_duration_str = request.GET.get('min_duration')
+    max_duration_str = request.GET.get('max_duration')
+
+    metrics = ApiLog.objects.all()
+
+    if start_date_str:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        metrics = metrics.filter(timestamp__gte=start_date)
+
+    if end_date_str:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        metrics = metrics.filter(timestamp__lte=end_date)
+
+    if min_duration_str:
+        metrics = metrics.filter(duration__gte=int(min_duration_str))
+
+    if max_duration_str:
+        metrics = metrics.filter(duration__lte=int(max_duration_str))
+
+    aggregated_data = metrics.values('endpoint').annotate(
+        avg_duration=Avg('duration')
+    ).order_by('-avg_duration')
+
+    return render(request, 'metrics_dashboard.html', {
+        'aggregated_data': aggregated_data,
+        'start_date': start_date_str,
+        'end_date': end_date_str,
+        'min_duration': min_duration_str,
+        'max_duration': max_duration_str,
+    })
