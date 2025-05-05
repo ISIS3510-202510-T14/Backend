@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Dashboard de Estadísticas</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+    #filterForm {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    #filterForm select {
+      padding: 8px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .charts-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+      margin-bottom: 30px;
+    }
+    .chart-container {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 15px;
+      margin: 10px;
+      flex: 1;
+      min-width: 300px;
+    }
+    .chart-container canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+    .pie-chart-container {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      padding: 15px;
+      margin: 0 auto;
+      max-width: 500px;
+    }
+    .chart-title {
+      text-align: center;
+      font-size: 18px;
+      color: #555;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Dashboard de Estadísticas de Eventos</h1>
+
+  <!-- Formulario para filtrar por evento -->
+  <form id="filterForm" method="GET">
+    <label for="eventSelect">Filtrar por evento:</label>
+    <select name="event_id" id="eventSelect" onchange="document.getElementById('filterForm').submit();">
+      <option value="all" {% if selected_event == "all" %}selected{% endif %}>Todos</option>
+      {% for event in all_events %}
+        <option value="{{ event }}" {% if event == selected_event %}selected{% endif %}>
+          {{ event }}
+        </option>
+      {% endfor %}
+    </select>
+  </form>
+
+  <!-- Fila de gráficos de barras -->
+  <div class="charts-row">
+    <div class="chart-container">
+      <div class="chart-title">Asistencia (Attendance)</div>
+      <canvas id="attendanceChart"></canvas>
+    </div>
+    <div class="chart-container">
+      <div class="chart-title">Proximidad (Proximity)</div>
+      <canvas id="proximityChart"></canvas>
+    </div>
+  </div>
+
+
+
+  <!-- Gráfico circular para Conversión -->
+  <div class="pie-chart-container">
+    <div class="chart-title">Tasa de Conversión</div>
+    <canvas id="conversionChart"></canvas>
+  </div>
+
+
+  <!-- Gráfico de barras ‑ Bets por Deporte -->
+  <div class="chart-container">
+    <div class="chart-title">Sports attention</div>
+    <canvas id="betsBySportChart"></canvas>
+  </div>
+
+
+  <script>
+    // Datos para Attendance y Proximity (gráficos de barras)
+    const eventLabels = {{ events|safe }};
+    const attendanceData = {{ attendance|safe }};
+    const proximityData = {{ proximity|safe }};
+
+    // === GRAFICO DE BARRAS: ATTENDANCE ===
+    const ctx1 = document.getElementById('attendanceChart').getContext('2d');
+    const attendanceChart = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: eventLabels,
+        datasets: [{
+          label: 'Total Attendance',
+          data: attendanceData,
+          backgroundColor: 'rgba(54, 162, 235, 0.6)',
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              // Mostramos valor y porcentaje
+              label: function(context) {
+                const dataset = context.dataset.data; // Array con los valores
+                const total = dataset.reduce((acc, val) => acc + val, 0);
+                const currentValue = context.parsed.y;
+                const percentage = total === 0 
+                  ? 0 
+                  : ((currentValue / total) * 100).toFixed(2);
+                return `${context.dataset.label}: ${currentValue} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // === GRAFICO DE BARRAS: PROXIMITY ===
+    const ctx2 = document.getElementById('proximityChart').getContext('2d');
+    const proximityChart = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: eventLabels,
+        datasets: [{
+          label: 'Total Proximity',
+          data: proximityData,
+          backgroundColor: 'rgba(255, 159, 64, 0.6)',
+        }]
+      },
+      options: {
+        scales: {
+          y: { beginAtZero: true }
+        },
+        plugins: {
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const dataset = context.dataset.data;
+                const total = dataset.reduce((acc, val) => acc + val, 0);
+                const currentValue = context.parsed.y;
+                const percentage = total === 0 
+                  ? 0 
+                  : ((currentValue / total) * 100).toFixed(2);
+                return `${context.dataset.label}: ${currentValue} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // === GRAFICO CIRCULAR: TASA DE CONVERSION ===
+    // Datos: "converted" (Attendance + Proximity) y "only_proximity" (solo Proximity)
+    const conversionData = {{ conversion_data|safe }};
+    const conversionLabels = ["Attendance + Proximity", "Only Proximity"];
+    const conversionValues = [conversionData.converted, conversionData.only_proximity];
+
+    const ctx3 = document.getElementById('conversionChart').getContext('2d');
+    const conversionChart = new Chart(ctx3, {
+      type: 'pie',
+      data: {
+        labels: conversionLabels,
+        datasets: [{
+          data: conversionValues,
+          backgroundColor: [
+            'rgba(75, 192, 192, 0.6)',  // Converted
+            'rgba(153, 102, 255, 0.6)' // Only Proximity
+          ]
+        }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const dataArr = context.dataset.data;
+                const total = dataArr.reduce((acc, val) => acc + val, 0);
+                const currentValue = dataArr[context.dataIndex];
+                const percentage = total === 0 
+                  ? 0 
+                  : ((currentValue / total) * 100).toFixed(2);
+                return `${context.label}: ${currentValue} (${percentage}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+
+
+
+const sportBetCounts = {{ sport_bet_counts|safe }};
+const sportLabels = Object.keys(sportBetCounts);
+const sportValues = Object.values(sportBetCounts);
+
+const ctx4 = document.getElementById('betsBySportChart').getContext('2d');
+const betsBySportChart = new Chart(ctx4, {
+  type: 'bar',
+  data: {
+    labels: sportLabels,
+    datasets: [{
+      label: 'Total Bets',
+      data: sportValues,
+      backgroundColor: 'rgba(255, 99, 132, 0.6)',
+    }]
+  },
+  options: {
+    scales: { y: { beginAtZero: true } },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const total = sportValues.reduce((a, v) => a + v, 0);
+            const val   = ctx.parsed.y;
+            const pct   = total ? ((val / total) * 100).toFixed(2) : 0;
+            return `${ctx.dataset.label}: ${val} (${pct}%)`;
+          }
+        }
+      },
+      legend: { display: false }
+    }
+  }
+});
+
+
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # realtime/models.py
 import datetime
-from mongoengine import Document, StringField, DateTimeField, DictField, FloatField
+from mongoengine import Document, StringField, DateTimeField, DictField, FloatField, IntField
 
 class EventRT(Document):
     
@@ -12,12 +12,16 @@ class EventRT(Document):
     endTime = DateTimeField()    # Fecha y hora de finalización del evento
     status = StringField()       # Ej: 'upcoming', 'live', 'ended'
     providerId = StringField()   # Debe coincidir con event.provider_id
-
-
     # New fields for the team names
     homeTeam = StringField()     # Name of the home team
     awayTeam = StringField()     # Name of the away team
     endTime = DateTimeField()    # End date and time
+    home_score = IntField()
+    away_score = IntField()     # Final score of the event
+    home_logo = StringField()    
+    away_logo = StringField() 
+    oddsA = FloatField()   # home‑team odd
+    oddsB = FloatField()   # away‑team odd
 
     meta = {
         'collection': 'events'
@@ -51,6 +55,10 @@ class Metric(Document):
     metricId = StringField(required=True)  # ID único para la métrica
     type = StringField(required=True)        # Ej: "conversionRate", "attendanceCount", etc.
     eventId = StringField()                  # Puede ser específico de un evento, un usuario o global
+    attendance = IntField()               # Número de asistentes al evento
+    proximity = IntField()                # Número de incidentes de proximidad
+    conversion_rate = FloatField()         # Tasa de conversión de un evento
+    
     value = FloatField(required=True)        # Valor numérico de la métrica
     timestamp = DateTimeField(default=datetime.datetime.utcnow)
 

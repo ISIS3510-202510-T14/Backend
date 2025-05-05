@@ -1,8 +1,14 @@
 # bet_management.py
 import datetime
 import logging
+from sqlite3 import IntegrityError
+from typing import Dict, List
 from dateutil.parser import parse as parse_date
 from bson import ObjectId
+from acid_db.models import Event, Team, Bet, User
+from realtime.models import EventRT, RecommendedBet
+from acid_db.models import User, Event, Team, Bet
+from django.core.exceptions import ObjectDoesNotExist
 
 
 
@@ -25,16 +31,9 @@ def listEvents(filterParams: dict) -> list:
     events = read_data("events")
     filtered = []
     for event in events:
-
-
         # Convert document to dict if necessary (depends on your Mongo driver usage)
-
         event_data = event.to_mongo().to_dict()
         event_data["eventId"] = str(event_data.pop("_id", None))
-
-
-
-
         # Apply simple filtering
         if "sport" in filterParams and event_data.get("sport") != filterParams["sport"]:
             continue
@@ -45,46 +44,142 @@ def listEvents(filterParams: dict) -> list:
         filtered.append(event_data)
     return filtered
 
+# def listRecommendedBets(userId: str, filterParams: dict) -> list:
+#     """
+#     Retrieves recommended bets for the given user from the Real-Time DB.
+#     """
+#     path = f"recommendedBets/{userId}"
+#     recommendations = read_data(path)
+#     # Here you can apply additional filtering based on filterParams if needed.
+#     if recommendations and isinstance(recommendations, list):
+#         return [rec.to_mongo().to_dict() if hasattr(rec, "to_mongo") else rec for rec in recommendations]
+#     return []
+
 def listRecommendedBets(userId: str, filterParams: dict) -> list:
     """
-    Retrieves recommended bets for the given user from the Real-Time DB.
+    Retrieves recommended bets for the given user using the MongoEngine ORM.
     """
-    path = f"recommendedBets/{userId}"
-    recommendations = read_data(path)
-    # Here you can apply additional filtering based on filterParams if needed.
-    if recommendations and isinstance(recommendations, list):
-        return [rec.to_mongo().to_dict() if hasattr(rec, "to_mongo") else rec for rec in recommendations]
-    return []
+    userId = userId.strip() 
+    
+    print(userId)
+    # Consulta básica por userId
+    qs = RecommendedBet.objects(userId=userId)
+
+    print (f"qs: {qs}")
+    
+    # Aplicar filtros adicionales si se especifican
+    # Ejemplo: filtrar por betType si se incluye en filterParams
+    if 'betType' in filterParams:
+        qs = qs.filter(betType=filterParams['betType'])
+    
+    # Convertir los documentos a diccionarios
+    recommendations = [rec.to_mongo().to_dict() for rec in qs]
+    return recommendations
 
 def placeBet(userId: str, betInfo: dict) -> dict:
-    """
-    Creates a new bet transaction in the ACID DB.
-    betInfo should include at least: eventId, stake, odds.
-    Returns a confirmation with betId, status and timestamp.
-    """
-    payload = {
-        "user_id": userId,
-        "event_id": betInfo.get("eventId"),
-        "stake": betInfo.get("stake"),
-        "odds": betInfo.get("odds"),
-        "status": "placed",
-    }
-    bet_id = create_record("bet", payload)
-    return {
-        "betId": bet_id,
-        "status": "placed",
-        "timestamp": datetime.datetime.utcnow().isoformat()
-    }
+    # --- 0) Sanity‑check the payload you already build ---
+    team_name = betInfo.get("team")
+    if not team_name:
+        raise ValueError("Bet information must include 'team'")
 
-def getBetHistory(userId: str) -> list:
-    """
-    Returns a list of bets placed by the user from the ACID DB.
-    """
-    queryParams = {
-        "filters": [{"field": "user_id", "operator": "=", "value": userId}],
-        "sort": {"field": "created_at", "direction": "DESC"}
+    # --- 1) Verify *all* foreign keys really exist --------------------------
+    try:
+        user   = User.objects.get(pk=userId)
+    except ObjectDoesNotExist:
+        raise ValueError(f"User '{userId}' not registered")
+
+    try:
+        event  = Event.objects.get(event_id=betInfo["eventId"].replace("-", ""))
+    except ObjectDoesNotExist:
+        raise ValueError(f"Event '{betInfo['eventId']}' not found")
+
+    team = Team.objects.filter(name=team_name).first()
+    if not team:
+        raise ValueError(f"Team '{team_name}' not found")
+
+    # --- 2) Create the bet (now safe) ---------------------------------------
+    bet = Bet.objects.create(
+        user   = user,
+        event  = event,
+        team   = team,
+        stake  = betInfo["stake"],
+        odds   = betInfo["odds"],
+        status = "placed",
+    )
+
+    return {
+        "betId"    : str(bet.bet_id),
+        "status"   : bet.status,
+        "timestamp": bet.created_at.isoformat(),
     }
-    return query_records("bet", queryParams)
+def getBetHistory(userId: str) -> List[Dict]:
+    """
+    Returns *both* the identifiers the app still needs (betId, eventId, teamId)
+    **and** the human‑readable fields required for display.
+
+    Each element:
+    {
+      "betId"     : "0039b9b3‑d1b1‑47c6‑8e90‑4f95b146dc83",
+      "eventId"   : "65680a73‑25b1‑55e4‑97e4‑33e50ce5155e",
+      "teamId"    : "163d78a7‑2bd8‑43ee‑acc0‑a10e53f023e1",
+      "match"     : "Osos de Manatí vs Gigantes de Carolina",
+      "sport"     : "basketball",
+      "yourTeam"  : "Osos de Manatí",
+      "stake"     : 1000.0,
+      "odds"      : 2.71,
+      "status"    : "placed",
+      "placedAt"  : "2025‑04‑18T19:25:00Z",
+      "updatedAt" : "2025‑04‑18T19:25:00Z"
+    }
+    """
+    # 1) pull the user’s bets (newest first) with FK objects pre‑fetched
+    bets = (
+        Bet.objects
+        .filter(user__pk=userId)
+        .select_related("event", "team")
+        .order_by("-created_at")
+    )
+
+    history: List[Dict] = []
+    for bet in bets:
+        event = bet.event
+
+        # -------------------------
+        # Build “Home vs Away” name
+        # -------------------------
+        home_name = (
+            event.home_team.first().name
+            if event.home_team.exists() else "Home"
+        )
+        away_name = (
+            event.away_team.first().name
+            if event.away_team.exists() else "Away"
+        )
+        match_title = f"{home_name} vs {away_name}"
+
+        # sport label (from the RT document, if any)
+        rt_doc = EventRT.objects(acidEventId=str(event.event_id).replace("-", "")).first()
+        sport   = getattr(rt_doc, "sport", None) or "unknown"
+
+        # ------------- assemble friendly record -------------
+        history.append({
+            # identifiers the client may still cache
+            "betId"   : str(bet.bet_id),
+            "eventId" : str(event.event_id),
+            "teamId"  : str(bet.team.team_id),
+
+            # user‑facing data
+            "match"     : match_title,
+            "sport"     : sport,
+            "yourTeam"  : bet.team.name,
+            "stake"     : float(bet.stake),
+            "odds"      : float(bet.odds),
+            "status"    : bet.status,
+            "placedAt"  : bet.created_at.isoformat(),
+            "updatedAt" : bet.updated_at.isoformat(),
+        })
+
+    return history
 
 def getBetDetails(betId: str) -> dict:
     """

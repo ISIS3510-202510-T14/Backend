@@ -10,6 +10,8 @@ from rest_framework.response import Response
 import random
 import uuid
 
+from acid_db.models import Team, Event
+
 from realtime.views import read_data, write_data, update_data
 from acid_db.views import read_record, create_record, update_record
 
@@ -17,6 +19,20 @@ from acid_db.views import read_record, create_record, update_record
 
 logger = logging.getLogger(__name__)
 
+def generate_random_odds() -> tuple[float, float]:
+    """
+    Very small ‘bookmaker margin’ so the two odds are realistic.
+    Returns (oddsA, oddsB) rounded to 2 decimals.
+    """
+    import random, math
+
+    base = random.uniform(1.35, 2.80)        
+    margin = random.uniform(0.05, 0.60)     
+    if random.random() > 0.50:
+        oddsA, oddsB = base, base + margin
+    else:
+        oddsA, oddsB = base + margin, base
+    return round(oddsA, 2), round(oddsB, 2)
 
 def get_random_location():
     locations = [
@@ -236,7 +252,12 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
             teams = event.get("teams", {})
             home_team = teams.get("home", {}).get("name")
             away_team = teams.get("away", {}).get("name")
+            home_logo = teams.get("home", {}).get("logo")
+            away_logo = teams.get("away", {}).get("logo")
             event_name = f"{home_team} vs {away_team}" if home_team and away_team else "Unnamed Event"
+            scores = event.get("scores", {})
+            home_score = scores.get("home", 0).get("total", 0) or 0
+            away_score = scores.get("away", 0).get("total", 0) or 0
             
             # Fix sport as "basketball"
             sport = "basketball"
@@ -246,7 +267,7 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
             
             # Build the standardized event dictionary
             event_data = {
-                "acidEventId": str(acid_event_id),  # Store as string
+                "acidEventId": acid_event_id.hex,  # Store as string
                 "name": event_name,
                 "sport": sport,
                 "location": event_location,
@@ -255,8 +276,15 @@ class BasketballAPIAdapter(BaseSportsAPIAdapter):
                 "status": mapped_status,
                 "providerId": self.provider_id,
                 "homeTeam": home_team,
-                "awayTeam": away_team
+                "awayTeam": away_team,
+                "home_score": home_score,
+                "away_score": away_score,
+                "home_logo": home_logo,
+                "away_logo": away_logo
+
             }
+            oddsA, oddsB = generate_random_odds()
+            event_data.update({"oddsA": oddsA, "oddsB": oddsB})
             events.append(event_data)
         return events
 
@@ -323,6 +351,11 @@ class FootballAPIAdapter:
         for item in result.get("response", []):
             fixture = item.get("fixture", {})
             teams = item.get("teams", {})
+            goals = item.get("goals", {})
+            home_score = goals.get("home", 0) or 0
+            away_score = goals.get("away", 0) or 0
+
+            
             
             # Extract the external fixture ID from the API response
             external_id = fixture.get("id")
@@ -355,6 +388,8 @@ class FootballAPIAdapter:
             # Build event name from teams data
             home_team = teams.get("home", {}).get("name")
             away_team = teams.get("away", {}).get("name")
+            home_logo = teams.get("home", {}).get("logo")
+            away_logo = teams.get("away", {}).get("logo")
             event_name = f"{home_team} vs {away_team}" if home_team and away_team else "Unnamed Fixture"
             
             # Set sport as football
@@ -374,8 +409,14 @@ class FootballAPIAdapter:
                 "status": mapped_status,
                 "providerId": self.provider_id,
                 "homeTeam": home_team,
-                "awayTeam": away_team
+                "awayTeam": away_team,
+                "home_score": home_score,
+                "away_score": away_score,
+                "home_logo": home_logo,
+                "away_logo": away_logo
             }
+            oddsA, oddsB = generate_random_odds()
+            event_data.update({"oddsA": oddsA, "oddsB": oddsB})
             events.append(event_data)
         return events
     
@@ -390,8 +431,12 @@ def poll_events(provider_id: str) -> None:
     # Create the adapter instance for basketball
     adapter_basket = BasketballAPIAdapter(provider_id, "3d554a0f6cde30dcb24c6c262a047429")
     adapter_football = FootballAPIAdapter(provider_id, "3d554a0f6cde30dcb24c6c262a047429")
+
     events_data_basket = adapter_basket.get_events(date_str)
+    print("Events fetched from Basketball API" )
     events_data_football = adapter_football.get_events(date_str)
+    print("Events fetched from Football API" )
+
     events_data = events_data_basket + events_data_football
     
     for event_data in events_data:
@@ -411,13 +456,42 @@ def poll_events(provider_id: str) -> None:
         acid_payload = {
             "event_id": acid_event_id,
             "rt_event_id": rt_id,
+            "home_score": event_data.get("home_score"),
+            "away_score": event_data.get("away_score"),
      
         }
-        try:
-            existing_rel = read_record("event", acid_event_id)
-            update_record("event", acid_event_id, acid_payload)
-        except Exception:
-            create_record("event", acid_payload)
+        # try:
+        #     event_instance = Event.objects.get(event_id=acid_event_id)
+        #     update_record("event", acid_event_id, acid_payload)
+        # except Exception:
+        #     create_record("event", acid_payload)
+        #     event_instance = Event.objects.create(**acid_payload)
+
+                # Actualiza o crea el evento de forma atómica usando get_or_create.
+        event_instance, created = Event.objects.get_or_create(
+            event_id=acid_event_id,
+            defaults=acid_payload
+        )
+        if not created:
+            # Si el evento ya existe, actualizamos los campos necesarios.
+            for key, value in acid_payload.items():
+                setattr(event_instance, key, value)
+            event_instance.save()
+
+
+
+        home_team_name = event_data["homeTeam"]
+        away_team_name = event_data["awayTeam"]
+        
+        # Verificar si existe el equipo por nombre; si no, crearlo.
+        home_team_obj, _ = Team.objects.get_or_create(name=home_team_name)
+        away_team_obj, _ = Team.objects.get_or_create(name=away_team_name)
+        
+        # Asociar los equipos al evento (ManyToMany)
+        if home_team_obj not in event_instance.home_team.all():
+            event_instance.home_team.add(home_team_obj)
+        if away_team_obj not in event_instance.away_team.all():
+            event_instance.away_team.add(away_team_obj)
         
         logger.info(f"Processed event: {event_data['name']} (ACID ID: {acid_event_id}, RT ID: {rt_id})")
 
