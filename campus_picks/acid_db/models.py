@@ -48,5 +48,18 @@ class Bet(models.Model):
 
     def __str__(self):
         return f"Bet {self.bet_id} on {self.event}"
+
+
+class Product(models.Model):
+    """Simple product model for the marketplace."""
+    product_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    image_url = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=100, blank=True)
+
+    def __str__(self):
+        return self.name
     
 
