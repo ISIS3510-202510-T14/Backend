@@ -1,4 +1,5 @@
 # insert_products.py
+#python manage.py shell < insert_products.py
 
 import os
 import django
