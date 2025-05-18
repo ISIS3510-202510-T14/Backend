@@ -358,6 +358,13 @@ def get_recommended_events(request):
 # Import the poll_events function from sports_data_integration
 # (Adjust if you want to import trigger_polling or something else.)
 from sports_data_integration.views import poll_events
+from marketplace.views import (
+    listProducts,
+    getProduct,
+    createProduct,
+    updateProduct,
+    deleteProduct,
+)
 
 @api_view(['POST'])
 def trigger_sports_polling(request):
@@ -378,3 +385,42 @@ def trigger_sports_polling(request):
     except Exception as e:
         return Response({"error": str(e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET', 'POST'])
+def products_endpoint(request):
+    """GET or create products."""
+    if request.method == 'GET':
+        products = listProducts()
+        return Response({'products': products}, status=status.HTTP_200_OK)
+
+    # POST
+    try:
+        product_id = createProduct(request.data)
+        return Response({'productId': product_id}, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+def product_detail_endpoint(request, productId):
+    if request.method == 'GET':
+        try:
+            product = getProduct(productId)
+            return Response({'product': product}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'PUT':
+        try:
+            updateProduct(productId, request.data)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == 'DELETE':
+        try:
+            deleteProduct(productId)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
