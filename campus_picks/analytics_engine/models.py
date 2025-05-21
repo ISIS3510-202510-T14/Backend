@@ -1,5 +1,7 @@
 from django.db import models
 
+from mongoengine import Document, StringField, DateTimeField
+
 class ApiLog(models.Model):
     endpoint = models.CharField(max_length=255)
     duration = models.IntegerField()  # tiempo en milisegundos
@@ -10,3 +12,17 @@ class ApiLog(models.Model):
 
     def __str__(self):
         return f"{self.endpoint} - {self.duration}ms"
+    
+
+
+
+class ProductViewMetric(Document):
+    productId = StringField(required=True)    # igual a la clave en tu JSON
+    userId    = StringField(required=True)    # igual a la clave en tu JSON
+    viewedAt  = DateTimeField(required=True)  # parsea ISO8601
+    
+
+
+    meta = {
+        'collection': 'productMetrics'
+    }
