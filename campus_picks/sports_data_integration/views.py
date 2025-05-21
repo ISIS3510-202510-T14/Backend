@@ -400,7 +400,8 @@ class FootballAPIAdapter:
             
             # Build the standardized event dictionary
             event_data = {
-                "acidEventId": str(acid_event_id),
+                #"acidEventId": str(acid_event_id),
+                "acidEventId": acid_event_id.hex,  # Store as string
                 "name": event_name,
                 "sport": sport,
                 "location": event_location,

@@ -105,6 +105,21 @@
   </div>
 
 
+  <div class="chart-container">
+  <div class="chart-title">Top 10 Most-Viewed Products</div>
+  <canvas id="viewsByProductChart"></canvas>
+</div>
+
+<div class="chart-container">
+  <div class="chart-title">Product Views by Category</div>
+  <canvas id="viewsByCategoryChart"></canvas>
+</div>
+
+
+
+
+
+
   <script>
     // Datos para Attendance y Proximity (gráficos de barras)
     const eventLabels = {{ events|safe }};
@@ -253,6 +268,57 @@ const betsBySportChart = new Chart(ctx4, {
     }
   }
 });
+
+
+// ---------- Vistas por Categoría ----------
+const categoryData = {{ category_views|safe }};
+const catLabels  = categoryData.map(item => item.category);
+const catValues  = categoryData.map(item => item.views);
+
+new Chart(
+  document.getElementById('viewsByCategoryChart').getContext('2d'),
+  {
+    type: 'bar',
+    data: {
+      labels: catLabels,
+      datasets: [{
+        label: 'Views',
+        data: catValues,
+        backgroundColor: 'rgba(60, 162, 91, 0.6)'
+      }]
+    },
+    options: {
+      scales: { y: { beginAtZero: true } },
+      plugins: { legend: { display: false } }
+    }
+  }
+);
+
+// ---------- Top 10 productos ----------
+const productData = {{ product_views|safe }};
+const prodLabels  = productData.map(item => item.product);
+const prodValues  = productData.map(item => item.views);
+
+new Chart(
+  document.getElementById('viewsByProductChart').getContext('2d'),
+  {
+    type: 'bar',
+    data: {
+      labels: prodLabels,
+      datasets: [{
+        label: 'Views',
+        data: prodValues,
+        backgroundColor: 'rgba(0, 123, 255, 0.6)'
+      }]
+    },
+    options: {
+      indexAxis: 'y',              // barras horizontales
+      scales: { x: { beginAtZero: true } },
+      plugins: { legend: { display: false } }
+    }
+  }
+);
+
 
 
   </script>
