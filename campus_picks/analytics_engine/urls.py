@@ -9,6 +9,7 @@ urlpatterns = [
     path("metrics/", views.log_api_metrics, name="metrics"),
     path("runDailyAnalytics/", views.triggerDailyAnalytics, name="analytics"),
     path("productViews/", views.ingest_product_views, name="productViews"),
+    path('dashboard/team-popularity/', views.team_popularity_dashboard, name='team_popularity_dashboard'),
 ]
 
 
