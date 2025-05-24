@@ -1,4 +1,6 @@
 # api/views.py
+from decimal import Decimal
+import uuid
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from location_processor.views import process_location_update
@@ -18,7 +20,7 @@ from user_management.views import (
     deleteUser
 )
 
-from acid_db.models import User
+from acid_db.models import User, Product, Purchase
 from rest_framework.decorators import api_view
 from rest_framework import status
 from rest_framework.response import Response
@@ -424,3 +426,75 @@ def product_detail_endpoint(request, productId):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+@api_view(["POST"])
+def create_purchase(request):
+    try:
+        user_id = request.data["user_id"]
+        product_id = request.data["product_id"]
+        quantity = int(request.data["quantity"])
+
+        user = User.objects.get(user_id=user_id)
+        product = Product.objects.get(product_id=product_id)
+        total_price = product.price * Decimal(quantity)
+
+
+        purchase = Purchase.objects.create(
+            purchase_id=uuid.uuid4(),
+            user=user,
+            product=product,
+            quantity=quantity,
+            total_price=total_price
+        )
+
+        print(f"Purchase created: {purchase}")
+
+        return Response({
+            "message": "Purchase successful.",
+            "purchase_id": str(purchase.purchase_id),
+            "total_price": str(total_price)
+        }, status=status.HTTP_201_CREATED)
+
+    except User.DoesNotExist:
+        return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+    except Product.DoesNotExist:
+        return Response({"error": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+    except (KeyError, ValueError):
+        return Response({"error": "Invalid request."}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET"])
+def get_purchase(request, purchase_id):
+    try:
+        purchase = Purchase.objects.select_related('user', 'product').get(purchase_id=purchase_id)
+        return Response({
+            "purchase_id": str(purchase.purchase_id),
+            "user_id": purchase.user.user_id,
+            "product_id": str(purchase.product.product_id),
+            "product_name": purchase.product.name,
+            "quantity": purchase.quantity,
+            "total_price": str(purchase.total_price),
+            "created_at": purchase.created_at.isoformat(),
+        })
+    except Purchase.DoesNotExist:
+        return Response({"error": "Purchase not found."}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(["GET"])
+def get_user_purchases(request, user_id):
+    try:
+        user = User.objects.get(user_id=user_id)
+        purchases = user.purchases.select_related('product').all().order_by('-created_at')
+
+        result = [{
+            "purchase_id": str(p.purchase_id),
+            "product_id": str(p.product.product_id),
+            "product_name": p.product.name,
+            "quantity": p.quantity,
+            "total_price": str(p.total_price),
+            "created_at": p.created_at.isoformat()
+        } for p in purchases]
+
+        return Response({"purchases": result})
+
+    except User.DoesNotExist:
+        return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)

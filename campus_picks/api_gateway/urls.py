@@ -14,6 +14,10 @@ from .views import (
     trigger_sports_polling,
     products_endpoint,
     product_detail_endpoint,
+    create_purchase,
+    get_purchase,
+    get_user_purchases,
+
 )
 from .views import login_probe 
 
@@ -32,5 +36,9 @@ urlpatterns = [
     path('auth/login', login_probe, name='auth_login'),
     path('products', products_endpoint, name='products'),
     path('products/<str:productId>', product_detail_endpoint, name='product_detail'),
+    path('purchases', create_purchase, name='create_purchase'),  # POST
+    path('purchases/<str:purchase_id>', get_purchase, name='get_purchase'),  # GET
+    path('users/<str:user_id>/purchases', get_user_purchases, name='get_user_purchases'), 
+    
 ]
 
