@@ -13,10 +13,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Avg
 from realtime.models import Metric, EventRT, RecommendedBet
-from acid_db.models import Team, Bet
+from uuid import UUID
+from django.db.models import Sum, Count
+
+from acid_db.models import Team, Bet, Product
 from analytics_engine.serializers import ApiLogSerializer
 from analytics_engine.models import ApiLog
-
+from dateutil.parser import isoparse
 from collections import Counter
 from typing import Dict, List, Tuple
 
@@ -429,6 +432,8 @@ def get_sports_attention():
     events = EventRT.objects.filter(id__in=events_id)  # Filtrar eventos por los IDs de las apuestas
 
 
+
+
 def get_bet_count_by_sport() -> Dict[str, int]:
     """
     Returns a dict  {sport_name: bet_count}.
@@ -459,7 +464,7 @@ def get_bet_count_by_sport() -> Dict[str, int]:
         acid_id_formatted = acid_id.replace("-", "").strip() # Remove dashes for matching
         print (f"Bet event_id: {acid_id_formatted}")
 
-        sport   = event_to_sport.get(acid_id.strip().replace("-",""), "unknown")
+        sport   = event_to_sport.get(acid_id, "unknown")
         counter[sport] += 1
 
     print (f"Bet count by sport: {counter}")
@@ -508,6 +513,11 @@ def dashboard_view(request):
         only_proximity = total_proximity - total_attendance
         conversion_data = {"converted": converted, "only_proximity": only_proximity}
         sport_bet_counts = get_bet_count_by_sport()
+
+        category_views = views_by_category()
+        print (f"Category views: {category_views}")
+
+        product_views = views_by_product()
     
     context = {
         "events": events,
@@ -517,6 +527,8 @@ def dashboard_view(request):
         "selected_event": selected_event,
         "conversion_data": conversion_data,
         "sport_bet_counts": sport_bet_counts,  # Para el gráfico de deportes
+        "category_views": category_views,  # Para el gráfico de categorías
+        "product_views": product_views,  # Para el gráfico de productos
     }
     
     return render(request, "dashboard.html", context)
@@ -575,6 +587,86 @@ def check_metrics(request):
 
     return Response(data)
 
+
+from .models import ProductViewMetric
+
+@api_view(['POST'])
+def ingest_product_views(request):
+    """
+    Recibe un array de {productId, userId, viewedAt} en ISO8601 (incluye 'Z').
+    Guarda cada doc en Mongo y devuelve {'stored': N}.
+    """
+    data = request.data
+    if not isinstance(data, list):
+        return Response({'error': 'expected a list'}, status=status.HTTP_400_BAD_REQUEST)
+
+    stored = 0
+    for item in data:
+        try:
+            # parseo estricto ISO8601 (Z, +00:00, etc.)
+            dt = isoparse(item['viewedAt'])
+            ProductViewMetric(
+                productId=item['productId'],
+                userId   =item['userId'],
+                viewedAt =dt
+            ).save()
+            stored += 1
+        except Exception:
+            
+            continue
+
+    return Response({'stored': stored}, status=status.HTTP_201_CREATED)
+
+
+def views_by_category():
+    """
+    Devuelve [{'category': 'Ropa', 'views': 98}, …] sin pelear con UUID ⇄ str.
+    """
+    # 1) totales en Mongo
+    pipeline = [{'$group': {'_id': '$productId', 'views': {'$sum': 1}}}]
+    product_counts = list(ProductViewMetric._get_collection().aggregate(pipeline))
+
+    # 2) build map completo id → category desde SQL
+    prod_map = {
+        str(p.product_id): (p.category or 'Uncategorized')
+        for p in Product.objects.all().only('product_id', 'category')
+    }
+
+    # 3) acumula vistas por categoría
+    cat_counts = {}
+    for rec in product_counts:
+        cat = prod_map.get(str(rec['_id']), 'Uncategorized')
+        cat_counts[cat] = cat_counts.get(cat, 0) + rec['views']
+
+    # 4) ordena
+    result = [{'category': c, 'views': v} for c, v in cat_counts.items()]
+    result.sort(key=lambda x: x['views'], reverse=True)
+    return result
+
+def views_by_product(limit=100):
+    """
+    Top-N productos más vistos – matching manual id → nombre.
+    """
+    pipeline = [
+        {'$group': {'_id': '$productId', 'views': {'$sum': 1}}},
+        {'$sort':  {'views': -1}},
+        {'$limit': limit},
+    ]
+    raw = list(ProductViewMetric._get_collection().aggregate(pipeline))
+
+    # mapa id→nombre
+    name_map = {
+        str(p.product_id): p.name
+        for p in Product.objects.all().only('product_id', 'name')
+    }
+
+    return [
+        {'product': name_map.get(str(r['_id']), 'Unknown'), 'views': r['views']}
+        for r in raw
+    ]
+
+
+
 def metrics_dashboard_view(request):
     # Captura los parámetros GET
     from django.db.models import Avg
@@ -604,6 +696,7 @@ def metrics_dashboard_view(request):
     aggregated_data = metrics.values('endpoint').annotate(
         avg_duration=Avg('duration')
     ).order_by('-avg_duration')
+    
 
     return render(request, 'metrics_dashboard.html', {
         'aggregated_data': aggregated_data,
@@ -612,3 +705,28 @@ def metrics_dashboard_view(request):
         'min_duration': min_duration_str,
         'max_duration': max_duration_str,
     })
+
+
+def team_popularity_dashboard(request):
+    """
+    Vista para mostrar un tablero de control de la popularidad de los equipos
+    basada en la actividad de apuestas.
+    """
+    # Calcular la popularidad de los equipos sumando el 'stake' total apostado por cada equipo.
+    # Esto nos da una idea de cuánto dinero se ha apostado en cada equipo.
+    team_popularity = Bet.objects.values('team__name') \
+                                 .annotate(total_stake=Sum('stake'), num_bets=Count('bet_id')) \
+                                 .order_by('-total_stake') # Ordenar de mayor a menor stake
+
+    # También podemos obtener los equipos más apostados por el número de apuestas
+    team_most_bets = Bet.objects.values('team__name') \
+                                .annotate(num_bets=Count('bet_id'), total_stake=Sum('stake')) \
+                                .order_by('-num_bets')
+
+
+    context = {
+        'team_popularity': team_popularity,
+        'team_most_bets': team_most_bets,
+        'page_title': 'Tablero de Popularidad de Equipos',
+    }
+    return render(request, 'team_popularity.html', context)

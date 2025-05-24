@@ -1,6 +1,24 @@
 # api/urls.py
 from django.urls import path
-from .views import location_update_view, get_events, get_recommended_events, create_bet, list_bets, bet_detail,create_user_endpoint,get_user_endpoint,update_user_endpoint,delete_user_endpoint, trigger_sports_polling
+from .views import (
+    location_update_view,
+    get_events,
+    get_recommended_events,
+    create_bet,
+    list_bets,
+    bet_detail,
+    create_user_endpoint,
+    get_user_endpoint,
+    update_user_endpoint,
+    delete_user_endpoint,
+    trigger_sports_polling,
+    products_endpoint,
+    product_detail_endpoint,
+    create_purchase,
+    get_purchase,
+    get_user_purchases,
+
+)
 from .views import login_probe 
 
 urlpatterns = [
@@ -16,5 +34,11 @@ urlpatterns = [
     path('usersD/<str:userId>', delete_user_endpoint, name="delete_user"), # DELETE /users/{userId}
     path('polling', trigger_sports_polling, name='trigger_sports_polling'),
     path('auth/login', login_probe, name='auth_login'),
+    path('products', products_endpoint, name='products'),
+    path('products/<str:productId>', product_detail_endpoint, name='product_detail'),
+    path('purchases', create_purchase, name='create_purchase'),  # POST
+    path('purchases/<str:purchase_id>', get_purchase, name='get_purchase'),  # GET
+    path('users/<str:user_id>/purchases', get_user_purchases, name='get_user_purchases'), 
+    
 ]
 
