@@ -14,7 +14,7 @@ from rest_framework import status
 from django.db.models import Avg
 from realtime.models import Metric, EventRT, RecommendedBet
 from uuid import UUID
-
+from django.db.models import Sum, Count
 
 from acid_db.models import Team, Bet, Product
 from analytics_engine.serializers import ApiLogSerializer
@@ -705,3 +705,28 @@ def metrics_dashboard_view(request):
         'min_duration': min_duration_str,
         'max_duration': max_duration_str,
     })
+
+
+def team_popularity_dashboard(request):
+    """
+    Vista para mostrar un tablero de control de la popularidad de los equipos
+    basada en la actividad de apuestas.
+    """
+    # Calcular la popularidad de los equipos sumando el 'stake' total apostado por cada equipo.
+    # Esto nos da una idea de cuánto dinero se ha apostado en cada equipo.
+    team_popularity = Bet.objects.values('team__name') \
+                                 .annotate(total_stake=Sum('stake'), num_bets=Count('bet_id')) \
+                                 .order_by('-total_stake') # Ordenar de mayor a menor stake
+
+    # También podemos obtener los equipos más apostados por el número de apuestas
+    team_most_bets = Bet.objects.values('team__name') \
+                                .annotate(num_bets=Count('bet_id'), total_stake=Sum('stake')) \
+                                .order_by('-num_bets')
+
+
+    context = {
+        'team_popularity': team_popularity,
+        'team_most_bets': team_most_bets,
+        'page_title': 'Tablero de Popularidad de Equipos',
+    }
+    return render(request, 'team_popularity.html', context)
